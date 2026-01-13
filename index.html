@@ -39,20 +39,20 @@
     <div id="side-menu">
         <div class="menu-header">
             <h2>Verlauf</h2>
-            <button id="close-menu-btn">Schließen</button>
+            <button id="close-menu-btn">Fertig</button>
         </div>
         <div class="menu-content">
             <div class="ios-widget">
                 <h3>Statistik</h3>
                 <div class="stats-row">
-                    <div class="stat-item"><span class="label">Gesamt</span><strong id="menu-total">0</strong></div>
+                    <div class="stat-item"><span class="label">Spiele</span><strong id="menu-total">0</strong></div>
                     <div class="stat-item"><span class="label">Blau</span><strong id="menu-p1">0</strong></div>
                     <div class="stat-item"><span class="label">Orange</span><strong id="menu-p2">0</strong></div>
                 </div>
             </div>
             <h3>Letzte Spiele</h3>
             <div id="history-list" class="ios-list">
-                <div class="empty-state">Lade Daten...</div>
+                <div class="empty-state">Keine Daten</div>
             </div>
             <button id="clear-data-btn" class="ios-danger-btn">Verlauf löschen</button>
         </div>
@@ -60,17 +60,14 @@
 
     <main>
         <div id="camera-container">
-            <div class="camera-viewport-clipped">
+            <div class="camera-hex-wrapper">
                 <video id="video" playsinline autoplay muted></video>
                 <canvas id="canvas" style="display:none;"></canvas>
-                
                 <div class="hex-border"></div>
-
-                <div id="overlay">
-                    <div class="instruction-pill">
-                        Brett platzieren
-                    </div>
-                </div>
+            </div>
+            
+            <div class="instruction-text">
+                Brett im Sechseck platzieren
             </div>
         </div>
 
@@ -82,8 +79,9 @@
                 
                 <div id="result-display" class="hidden fade-in">
                     <div class="result-header">
-                        <h2 id="winner-msg">...</h2>
+                        <h2 id="winner-msg">Analysiere...</h2>
                     </div>
+
                     <div class="score-cards-row">
                         <div class="score-card p1-card">
                             <span class="label">Blau</span><strong id="score-p1">-</strong>
@@ -92,6 +90,7 @@
                             <span class="label">Orange</span><strong id="score-p2">-</strong>
                         </div>
                     </div>
+
                     <div class="button-group">
                         <button id="save-btn" class="action-btn save">Speichern</button>
                         <button id="reset-btn" class="action-btn reset">Neu</button>
@@ -100,6 +99,15 @@
             </div>
         </div>
     </main>
+
+    <div id="ios-install-prompt" class="ios-prompt hidden">
+        <div class="prompt-content">
+            <p>App installieren:</p>
+            <p>Tippe auf <span class="share-icon"></span> und dann <strong>"Zum Home-Bildschirm"</strong></p>
+        </div>
+        <div class="prompt-arrow"></div>
+        <button id="close-prompt" class="prompt-close">×</button>
+    </div>
 
     <script src="script.js"></script>
 </body>
