@@ -8,7 +8,7 @@
     <link rel="manifest" href="manifest.json">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="theme-color" content="#F2F2F7">
+    <meta name="theme-color" content="#000000">
     <link rel="apple-touch-icon" href="icon.png">
     
     <link rel="stylesheet" href="style.css">
@@ -43,43 +43,33 @@
         </div>
         <div class="menu-content">
             <div class="ios-widget">
-                <h3>Gesamtstatistik</h3>
+                <h3>Statistik</h3>
                 <div class="stats-row">
-                    <div class="stat-item">
-                        <span class="label">Spiele</span>
-                        <strong id="menu-total">0</strong>
-                    </div>
-                    <div class="stat-item">
-                        <span class="label">S1 Siege</span>
-                        <strong id="menu-p1">0</strong>
-                    </div>
-                    <div class="stat-item">
-                        <span class="label">S2 Siege</span>
-                        <strong id="menu-p2">0</strong>
-                    </div>
+                    <div class="stat-item"><span class="label">Gesamt</span><strong id="menu-total">0</strong></div>
+                    <div class="stat-item"><span class="label">Blau</span><strong id="menu-p1">0</strong></div>
+                    <div class="stat-item"><span class="label">Orange</span><strong id="menu-p2">0</strong></div>
                 </div>
             </div>
-
             <h3>Letzte Spiele</h3>
             <div id="history-list" class="ios-list">
-                <div class="empty-state">Noch keine Spiele gespeichert.</div>
+                <div class="empty-state">Lade Daten...</div>
             </div>
-
             <button id="clear-data-btn" class="ios-danger-btn">Verlauf löschen</button>
         </div>
     </div>
 
     <main>
         <div id="camera-container">
-            <video id="video" playsinline autoplay muted></video>
-            <canvas id="canvas" style="display:none;"></canvas>
-            
-            <div id="overlay">
-                <svg class="hex-guide" viewBox="0 0 100 115">
-                    <polygon points="50 2, 98 28, 98 87, 50 113, 2 87, 2 28" vector-effect="non-scaling-stroke"/>
-                </svg>
-                <div class="instruction-pill">
-                    Brett im Rahmen platzieren
+            <div class="camera-viewport-clipped">
+                <video id="video" playsinline autoplay muted></video>
+                <canvas id="canvas" style="display:none;"></canvas>
+                
+                <div class="hex-border"></div>
+
+                <div id="overlay">
+                    <div class="instruction-pill">
+                        Brett platzieren
+                    </div>
                 </div>
             </div>
         </div>
@@ -92,34 +82,20 @@
                 
                 <div id="result-display" class="hidden fade-in">
                     <div class="result-header">
-                        <h2 id="winner-msg">Analyse...</h2>
+                        <h2 id="winner-msg">...</h2>
                     </div>
-
                     <div class="score-cards-row">
                         <div class="score-card p1-card">
-                            <span class="label">Spieler 1</span>
-                            <strong id="score-p1" class="score-num">-</strong>
+                            <span class="label">Blau</span><strong id="score-p1">-</strong>
                         </div>
                         <div class="score-card p2-card">
-                            <span class="label">Spieler 2</span>
-                            <strong id="score-p2" class="score-num">-</strong>
+                            <span class="label">Orange</span><strong id="score-p2">-</strong>
                         </div>
                     </div>
-
                     <div class="button-group">
                         <button id="save-btn" class="action-btn save">Speichern</button>
                         <button id="reset-btn" class="action-btn reset">Neu</button>
                     </div>
-                </div>
-                
-                <div id="quick-stats" class="quick-stats fade-in">
-                    <h3>Statistik</h3>
-                    <div class="mini-stats-grid">
-                         <div>S1: <strong id="qs-p1">0</strong></div>
-                         <div>S2: <strong id="qs-p2">0</strong></div>
-                         <div>Ges: <strong id="qs-total">0</strong></div>
-                    </div>
-                    <button id="delete-local-btn" class="text-btn">Daten löschen</button>
                 </div>
             </div>
         </div>
