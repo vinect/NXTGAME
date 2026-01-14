@@ -25,11 +25,7 @@
             <img src="NXT Titel.png" alt="NXT" class="brand-logo">
         </a>
         <button id="menu-btn" class="icon-btn">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="3" y1="12" x2="21" y2="12"></line>
-                <line x1="3" y1="6" x2="21" y2="6"></line>
-                <line x1="3" y1="18" x2="21" y2="18"></line>
-            </svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
         </button>
     </header>
 
@@ -38,38 +34,35 @@
         <div class="menu-content">
             <h3 class="menu-title">MENÜ</h3>
             <button class="menu-item active" data-target="view-setup">Startseite</button>
+            <button class="menu-item" data-target="view-instructions">Anleitung</button>
             <button class="menu-item" data-target="view-history">Verlauf</button>
             <button class="menu-item" data-target="view-insights">Insights</button>
-            <div class="menu-footer">NXT Reutlingen v6.1 (Anti-Noise)</div>
+            <div class="menu-footer">NXT Reutlingen v9.5</div>
         </div>
     </nav>
 
     <button id="fab-home" class="fab-btn hidden">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
-            <polyline points="9 22 9 12 15 12 15 22"></polyline>
-        </svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
     </button>
 
     <section id="view-setup" class="view active-view">
         <div class="center-content">
             <div class="glass-card lobby-card">
                 <h2>NEUES SPIEL</h2>
-                <p class="subtitle">Spieler zuweisen</p>
-                <div class="input-group">
-                    <label class="label-blue">Team Blau</label>
-                    <input type="text" id="p1-name" placeholder="Name" value="Blau">
+                <div class="lobby-header">
+                    <p class="subtitle">Spieler konfigurieren</p>
+                    <div class="player-controls">
+                        <button id="remove-player-btn" class="ctrl-btn" disabled>−</button>
+                        <span id="player-count-display">2</span>
+                        <button id="add-player-btn" class="ctrl-btn">+</button>
+                    </div>
                 </div>
-                <div class="input-group">
-                    <label class="label-orange">Team Orange</label>
-                    <input type="text" id="p2-name" placeholder="Name" value="Orange">
-                </div>
+                
+                <div id="players-container"></div>
+
                 <button id="start-game-btn" class="primary-btn big-btn">
-                    STARTEN
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
-                        <line x1="5" y1="12" x2="19" y2="12"></line>
-                        <polyline points="12 5 19 12 12 19"></polyline>
-                    </svg>
+                    SPIEL STARTEN
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
                 </button>
             </div>
         </div>
@@ -92,23 +85,27 @@
                     <h2 id="winner-msg">Analysiere...</h2>
                     <div id="status-pill" class="status-saved">Gespeichert ✅</div>
                 </div>
-                <div class="score-cards-row">
-                    <div id="card-p1" class="score-glass">
-                        <span class="label" id="res-label-p1">Blau</span>
-                        <strong id="score-p1">-</strong>
-                    </div>
-                    <div id="card-p2" class="score-glass">
-                        <span class="label" id="res-label-p2">Orange</span>
-                        <strong id="score-p2">-</strong>
-                    </div>
-                </div>
+                
+                <div id="score-list" class="score-grid"></div>
+                
                 <div class="button-group">
-                    <button id="next-game-btn" class="primary-btn action-main-btn">
-                        NEUES SPIEL
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-                    </button>
+                    <button id="next-game-btn" class="primary-btn action-main-btn">NEUES SPIEL</button>
                 </div>
                 <button id="retry-btn" class="text-btn" style="margin-top:10px; width:100%">Messung wiederholen</button>
+            </div>
+        </div>
+    </section>
+
+    <section id="view-instructions" class="view view-scroll">
+        <div class="content-padding">
+            <h2>ANLEITUNG</h2>
+            <div class="glass-card">
+                <h3>Das Spielfeld</h3>
+                <p>Nutze das Holzbrett. Gummibänder werden automatisch ignoriert.</p>
+            </div>
+            <div class="glass-card highlight-card">
+                <h3>Farbauswahl</h3>
+                <p>Auf der Startseite kannst du jedem Spieler eine eigene Farbe zuweisen (Türkis, Orange, Schwarz oder Weiß).</p>
             </div>
         </div>
     </section>
@@ -129,27 +126,17 @@
         <div class="content-padding">
             <h2>INSIGHTS</h2>
             <div class="glass-card">
-                <h3>Das Projekt</h3>
-                <p>KI-Erkennung von Spielständen trotz transparenter Materialien und störender Geometrie (Gummibänder).</p>
-            </div>
-            <div class="glass-card highlight-card">
                 <h3>Fakultät NXT</h3>
-                <p>Nachhaltigkeit & Technologie studieren.</p>
-                <a href="https://www.nxt.reutlingen-university.de/" target="_blank" class="link-btn">
-                    Zur Website
-                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3"/></svg>
-                </a>
+                <a href="https://www.nxt.reutlingen-university.de/" target="_blank" class="link-btn">Zur Website →</a>
             </div>
         </div>
     </section>
 
     <div id="ios-install-prompt" class="clean-prompt hidden">
         <div class="prompt-text">
-            <strong>App installieren:</strong><br>
-            Tippe auf <span class="share-icon-svg"></span> und wähle <em>"Zum Home-Bildschirm"</em>
+            <strong>App installieren:</strong><br>Tippe auf <span class="share-icon-svg"></span> und wähle <em>"Zum Home-Bildschirm"</em>
         </div>
-        <div class="prompt-arrow"></div>
-        <button id="close-prompt" class="prompt-close">×</button>
+        <div class="prompt-arrow"></div><button id="close-prompt" class="prompt-close">×</button>
     </div>
 
     <script src="script.js"></script>
