@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>NXT Game</title>
-    
+    <title>NXTgame</title>
+    <meta name="apple-mobile-web-app-title" content="NXTgame">
     <link rel="manifest" href="manifest.json">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -16,16 +16,20 @@
     <link rel="stylesheet" href="style.css">
     
     <script async src="https://docs.opencv.org/4.8.0/opencv.js" onload="onOpenCvReady();" type="text/javascript"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 </head>
 <body>
 
     <header class="glass-header">
         <a href="https://www.nxt.reutlingen-university.de/" target="_blank" class="brand-link">
-            <img src="NXT Titel.png" alt="NXT Hochschule Reutlingen" class="brand-logo">
+            <img src="NXT Titel.png" alt="NXT" class="brand-logo">
         </a>
-        
         <button id="menu-btn" class="icon-btn">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="3" y1="12" x2="21" y2="12"></line>
+                <line x1="3" y1="6" x2="21" y2="6"></line>
+                <line x1="3" y1="18" x2="21" y2="18"></line>
+            </svg>
         </button>
     </header>
 
@@ -36,26 +40,30 @@
             <button class="menu-item active" data-target="view-setup">Startseite</button>
             <button class="menu-item" data-target="view-history">Verlauf</button>
             <button class="menu-item" data-target="view-insights">Insights</button>
-            <div class="menu-footer">NXT Reutlingen v2.6</div>
+            <div class="menu-footer">NXT Reutlingen v6.1 (Anti-Noise)</div>
         </div>
     </nav>
+
+    <button id="fab-home" class="fab-btn hidden">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+            <polyline points="9 22 9 12 15 12 15 22"></polyline>
+        </svg>
+    </button>
 
     <section id="view-setup" class="view active-view">
         <div class="center-content">
             <div class="glass-card lobby-card">
                 <h2>NEUES SPIEL</h2>
                 <p class="subtitle">Spieler zuweisen</p>
-                
                 <div class="input-group">
                     <label class="label-blue">Team Blau</label>
                     <input type="text" id="p1-name" placeholder="Name" value="Blau">
                 </div>
-                
                 <div class="input-group">
                     <label class="label-orange">Team Orange</label>
                     <input type="text" id="p2-name" placeholder="Name" value="Orange">
                 </div>
-
                 <button id="start-game-btn" class="primary-btn big-btn">
                     STARTEN
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
@@ -73,30 +81,34 @@
                 <video id="video" playsinline autoplay muted></video>
                 <canvas id="canvas" style="display:none;"></canvas>
                 <div class="hex-border"></div>
+                <div id="scan-line" class="scan-overlay hidden"></div>
             </div>
-            <div class="instruction-badge">Scanner bereit</div>
+            <div id="instruction-text" class="instruction-badge">Ziele auf das Brett...</div>
         </div>
 
-        <div id="controls-sheet" class="glass-sheet">
-            <button id="scan-btn" class="primary-btn">AUSWERTEN</button>
-            <button id="stop-game-btn" class="text-btn">Beenden</button>
-            
-            <div id="result-display" class="hidden fade-in">
-                <div class="result-header"><h2 id="winner-msg">Analysiere...</h2></div>
+        <div id="controls-sheet" class="glass-sheet hidden">
+            <div id="result-display" class="fade-in">
+                <div class="result-header">
+                    <h2 id="winner-msg">Analysiere...</h2>
+                    <div id="status-pill" class="status-saved">Gespeichert ✅</div>
+                </div>
                 <div class="score-cards-row">
-                    <div class="score-glass p1-card">
+                    <div id="card-p1" class="score-glass">
                         <span class="label" id="res-label-p1">Blau</span>
                         <strong id="score-p1">-</strong>
                     </div>
-                    <div class="score-glass p2-card">
+                    <div id="card-p2" class="score-glass">
                         <span class="label" id="res-label-p2">Orange</span>
                         <strong id="score-p2">-</strong>
                     </div>
                 </div>
                 <div class="button-group">
-                    <button id="save-btn" class="action-btn save">SPEICHERN</button>
-                    <button id="retry-btn" class="action-btn reset">WIEDERHOLEN</button>
+                    <button id="next-game-btn" class="primary-btn action-main-btn">
+                        NEUES SPIEL
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                    </button>
                 </div>
+                <button id="retry-btn" class="text-btn" style="margin-top:10px; width:100%">Messung wiederholen</button>
             </div>
         </div>
     </section>
@@ -118,7 +130,7 @@
             <h2>INSIGHTS</h2>
             <div class="glass-card">
                 <h3>Das Projekt</h3>
-                <p>Digitale Erweiterung eines physischen Spiels mittels Computer Vision Technologie.</p>
+                <p>KI-Erkennung von Spielständen trotz transparenter Materialien und störender Geometrie (Gummibänder).</p>
             </div>
             <div class="glass-card highlight-card">
                 <h3>Fakultät NXT</h3>
