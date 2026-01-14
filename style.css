@@ -4,7 +4,8 @@
     --text-main: #222222;
     --glass-bg: rgba(255, 255, 255, 0.9);
     --glass-border: 1px solid rgba(255, 255, 255, 0.5);
-    --header-height: 60px;
+    /* Header Höhe etwas erhöht für mehr Platz */
+    --header-content-height: 60px;
 }
 
 body {
@@ -13,38 +14,51 @@ body {
     width: 100%; height: 100dvh; display: flex; flex-direction: column; overflow: hidden;
 }
 
-/* HEADER */
+/* --- HEADER FIX --- */
 .glass-header {
-    position: fixed; top: 0; left: 0; right: 0; height: var(--header-height);
+    position: fixed; top: 0; left: 0; right: 0;
+    
+    /* Gesamthöhe = Inhalt (60px) + Safe Area (Notch) + 10px Extra Luft */
+    height: calc(var(--header-content-height) + env(safe-area-inset-top) + 10px);
+    
+    /* Padding schiebt den Inhalt unter die Notch + 5px Extra Abstand */
+    padding-top: calc(env(safe-area-inset-top) + 5px);
+    padding-bottom: 5px;
+    padding-left: 20px; padding-right: 20px;
+    
     background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px);
     display: flex; align-items: center; justify-content: space-between;
-    padding: 0 20px; z-index: 100; border-bottom: var(--glass-border);
+    z-index: 100; border-bottom: var(--glass-border);
+    box-sizing: border-box; /* Wichtig! */
 }
 
-/* --- LOGO --- */
+/* --- LOGO ANPASSUNG --- */
 .brand-link {
     display: block; cursor: pointer; text-decoration: none;
     transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+    height: 100%; display: flex; align-items: center; /* Zentriert Logo vertikal */
 }
 .brand-link:hover { transform: scale(1.05); opacity: 0.9; }
-.brand-logo { height: 40px; width: auto; display: block; }
 
-/* --- MENÜ ICON (FIXED) --- */
+.brand-logo {
+    /* Logo wird dynamisch angepasst, damit es nicht abgeschnitten wird */
+    max-height: 45px; 
+    width: auto; 
+    object-fit: contain;
+    display: block;
+}
+
+/* --- MENÜ ICON --- */
 .icon-btn {
     background: none; border: none; cursor: pointer; padding: 0;
-    width: 44px; height: 44px; /* Größere Touch-Area */
-    display: flex; align-items: center; justify-content: center; /* Zentriert SVG */
+    width: 44px; height: 44px;
+    display: flex; align-items: center; justify-content: center;
     transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
-
-/* Das SVG selbst erzwingen wir jetzt sichtbar */
 .icon-btn svg {
-    width: 32px !important;   /* Feste Breite */
-    height: 32px !important;  /* Feste Höhe */
-    stroke: var(--nxt-teal);  /* Farbe erzwingen */
-    stroke-width: 2.5px;      /* Etwas dickerer Strich */
+    width: 32px !important; height: 32px !important;
+    stroke: var(--nxt-teal); stroke-width: 2.5px;
 }
-
 .icon-btn:hover { transform: scale(1.1); }
 .icon-btn:active { transform: scale(0.95); }
 
@@ -59,7 +73,9 @@ body {
     position: fixed; top: 0; right: 0; bottom: 0; width: 280px;
     background: #fff; z-index: 160; transform: translateX(100%); 
     transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    box-shadow: -5px 0 30px rgba(0,0,0,0.3); padding-top: 80px;
+    box-shadow: -5px 0 30px rgba(0,0,0,0.3); 
+    /* Padding oben erhöht, damit Menü nicht unter Notch verschwindet */
+    padding-top: calc(env(safe-area-inset-top) + 40px);
 }
 .glass-menu.open { transform: translateX(0); }
 .menu-content { display: flex; flex-direction: column; padding: 30px; gap: 15px; }
@@ -79,9 +95,12 @@ body {
 .menu-item.active { background: rgba(0, 155, 158, 0.1); color: var(--nxt-teal); }
 .menu-footer { margin-top: auto; font-size: 0.8rem; color: #ccc; text-align: center; }
 
-/* VIEWS */
+/* --- VIEWS --- */
 .view {
-    position: absolute; top: var(--header-height); left: 0; right: 0; bottom: 0;
+    position: absolute; left: 0; right: 0; bottom: 0;
+    /* View beginnt erst UNTER dem Header */
+    top: 0; 
+    padding-top: calc(var(--header-content-height) + env(safe-area-inset-top) + 20px);
     display: none; flex-direction: column;
 }
 .active-view { display: flex; }
@@ -123,8 +142,6 @@ body {
     box-shadow: 0 15px 30px rgba(0, 155, 158, 0.5);
 }
 .primary-btn:active { transform: translateY(-2px) scale(0.98); }
-
-/* Button Icons */
 .primary-btn svg {
     width: 24px !important; height: 24px !important; stroke-width: 3px;
     transition: transform 0.3s ease;

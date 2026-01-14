@@ -29,6 +29,7 @@ let currentResult = { p1: 0, p2: 0 };
 
 function onOpenCvReady() { console.log("NXT Engine Ready"); cvReady = true; }
 
+// --- NAVIGATION ---
 function toggleMenu() {
     sideMenu.classList.toggle('open');
     menuOverlay.classList.toggle('open');
@@ -60,6 +61,7 @@ menuItems.forEach(item => {
     });
 });
 
+// --- GAME FLOW ---
 startBtn.addEventListener('click', () => {
     localStorage.setItem('nxt_p1', p1Input.value);
     localStorage.setItem('nxt_p2', p2Input.value);
@@ -78,6 +80,7 @@ window.addEventListener('load', () => {
     checkIOS();
 });
 
+// --- KAMERA ---
 async function startCamera() {
     if (streamObject) return;
     try { if (navigator.wakeLock) await navigator.wakeLock.request('screen'); } catch(e){}
@@ -102,6 +105,7 @@ function stopCamera() {
     }
 }
 
+// --- ANALYSE ---
 scanBtn.addEventListener('click', () => {
     if (!cvReady || !streamObject) return;
     if(navigator.vibrate) navigator.vibrate(30);
