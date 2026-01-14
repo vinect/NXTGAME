@@ -21,31 +21,32 @@ body {
     padding: 0 20px; z-index: 100; border-bottom: var(--glass-border);
 }
 
-/* --- MENÜ ICON BUTTON (SCHWEBEND) --- */
+/* --- LOGO --- */
+.brand-link {
+    display: block; cursor: pointer; text-decoration: none;
+    transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+.brand-link:hover { transform: scale(1.05); opacity: 0.9; }
+.brand-logo { height: 40px; width: auto; display: block; }
+
+/* --- MENÜ ICON (FIXED) --- */
 .icon-btn {
-    background: none; border: none; cursor: pointer; padding: 5px;
-    color: var(--nxt-teal); width: 40px; height: 40px;
-    display: flex; align-items: center; justify-content: center;
-    
-    /* Animation */
+    background: none; border: none; cursor: pointer; padding: 0;
+    width: 44px; height: 44px; /* Größere Touch-Area */
+    display: flex; align-items: center; justify-content: center; /* Zentriert SVG */
     transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
 
-.icon-btn:hover {
-    transform: translateY(-3px) scale(1.1); /* Hebt sich und wird größer */
+/* Das SVG selbst erzwingen wir jetzt sichtbar */
+.icon-btn svg {
+    width: 32px !important;   /* Feste Breite */
+    height: 32px !important;  /* Feste Höhe */
+    stroke: var(--nxt-teal);  /* Farbe erzwingen */
+    stroke-width: 2.5px;      /* Etwas dickerer Strich */
 }
 
-.icon-btn:active {
-    transform: scale(0.95);
-}
-
-/* BRANDING */
-.brand-container { display: flex; gap: 10px; align-items: center; }
-.nxt-icon-grid { display: grid; grid-template-columns: repeat(3, 4px); gap: 2px; }
-.nxt-icon-grid span { width: 4px; height: 4px; background: var(--nxt-teal); border-radius: 50%; }
-.brand-text { display: flex; flex-direction: column; }
-.uni-text { font-size: 0.6rem; color: #888; font-weight: 600; letter-spacing: 0.5px; }
-.nxt-text { font-size: 1.2rem; color: var(--nxt-teal); font-weight: 700; line-height: 1; }
+.icon-btn:hover { transform: scale(1.1); }
+.icon-btn:active { transform: scale(0.95); }
 
 /* MENÜ DRAWER */
 .menu-overlay {
@@ -64,22 +65,17 @@ body {
 .menu-content { display: flex; flex-direction: column; padding: 30px; gap: 15px; }
 .menu-title { font-size: 0.8rem; color: #999; letter-spacing: 1px; margin-bottom: 10px; }
 
-/* --- MENÜ ITEMS (SCHWEBEND NACH RECHTS) --- */
+/* MENÜ ITEMS */
 .menu-item {
     background: none; border: none; text-align: left; padding: 15px;
     font-size: 1.1rem; font-weight: 600; color: #333; border-radius: 8px;
-    
-    /* Animation */
     transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
-
 .menu-item:hover {
-    background: rgba(0, 155, 158, 0.08); /* Zartes Türkis */
-    transform: translateX(8px); /* Schwebt nach rechts */
-    color: var(--nxt-teal);
-    padding-left: 20px; /* Text rückt auch etwas ein */
+    background: rgba(0, 155, 158, 0.08); 
+    transform: translateX(8px); 
+    color: var(--nxt-teal); padding-left: 20px;
 }
-
 .menu-item.active { background: rgba(0, 155, 158, 0.1); color: var(--nxt-teal); }
 .menu-footer { margin-top: auto; font-size: 0.8rem; color: #ccc; text-align: center; }
 
@@ -114,24 +110,21 @@ body {
 }
 .input-group input:focus { outline: none; border-color: var(--nxt-teal); background: #fff; }
 
-/* --- PRIMARY BUTTON (SCHWEBEND) --- */
+/* BUTTONS */
 .primary-btn {
     background: var(--nxt-teal); color: white; border: none; border-radius: 8px; 
     font-weight: 700; cursor: pointer; letter-spacing: 0.5px;
     display: flex; align-items: center; justify-content: center; gap: 10px;
-    
-    /* Animation */
     transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
     box-shadow: 0 4px 15px rgba(0, 155, 158, 0.3);
 }
-
 .primary-btn:hover {
-    transform: translateY(-5px); /* Schwebt hoch */
+    transform: translateY(-5px);
     box-shadow: 0 15px 30px rgba(0, 155, 158, 0.5);
 }
-
 .primary-btn:active { transform: translateY(-2px) scale(0.98); }
 
+/* Button Icons */
 .primary-btn svg {
     width: 24px !important; height: 24px !important; stroke-width: 3px;
     transition: transform 0.3s ease;
@@ -155,7 +148,6 @@ body {
     position: absolute; bottom: 30px; background: rgba(0, 155, 158, 0.9);
     color: white; padding: 6px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: 600;
 }
-
 .glass-sheet {
     position: absolute; bottom: 0; width: 100%; background: #fff;
     padding: 25px 20px; border-radius: 20px 20px 0 0; box-sizing: border-box;
@@ -185,7 +177,7 @@ p { color: #666; line-height: 1.5; margin: 0; }
 .empty-state { padding: 30px; text-align: center; color: #bbb; font-size: 0.9rem; }
 .link-btn { display: inline-flex; align-items: center; gap: 5px; margin-top: 10px; color: var(--nxt-teal); font-weight: 700; text-decoration: none; font-size: 0.9rem; }
 
-/* iOS PROMPT (Clean) */
+/* iOS PROMPT */
 .clean-prompt {
     position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%); width: 90%; max-width: 320px;
     background: #fff; border-radius: 12px; padding: 15px; 
