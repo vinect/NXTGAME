@@ -3,107 +3,141 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>NXT Game Scanner</title>
+    <title>NXT Game</title>
     
     <link rel="manifest" href="manifest.json">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="theme-color" content="#000000">
+    <meta name="theme-color" content="#009B9E">
     <link rel="apple-touch-icon" href="icon.png">
     
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Source+Sans+Pro:wght@300;400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
+    
     <script async src="https://docs.opencv.org/4.8.0/opencv.js" onload="onOpenCvReady();" type="text/javascript"></script>
 </head>
 <body>
 
-    <header>
+    <header class="glass-header">
         <div class="brand-container">
-            <div class="nxt-icon-grid">
-                <span></span><span></span><span></span>
-                <span></span><span></span><span></span>
-                <span></span><span></span><span></span>
-            </div>
+            <div class="nxt-icon-grid"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
             <div class="brand-text">
-                <span class="uni-text">REUTLINGEN UNIVERSITY</span>
+                <span class="uni-text">HOCHSCHULE REUTLINGEN</span>
                 <span class="nxt-text">NXT</span>
             </div>
         </div>
-        <button id="menu-btn" class="menu-icon-btn">
-            <div class="menu-lines">
-                <span></span><span></span><span></span>
-            </div>
+        <button id="menu-btn" class="icon-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
         </button>
     </header>
 
-    <div id="menu-overlay"></div>
-    <div id="side-menu">
-        <div class="menu-header">
-            <h2>Verlauf</h2>
-            <button id="close-menu-btn">Fertig</button>
-        </div>
+    <div id="side-menu-overlay" class="menu-overlay"></div>
+    <nav id="side-menu" class="glass-menu">
         <div class="menu-content">
-            <div class="ios-widget">
-                <h3>Statistik</h3>
-                <div class="stats-row">
-                    <div class="stat-item"><span class="label">Spiele</span><strong id="menu-total">0</strong></div>
-                    <div class="stat-item"><span class="label">Blau</span><strong id="menu-p1">0</strong></div>
-                    <div class="stat-item"><span class="label">Orange</span><strong id="menu-p2">0</strong></div>
-                </div>
-            </div>
-            <h3>Letzte Spiele</h3>
-            <div id="history-list" class="ios-list">
-                <div class="empty-state">Keine Daten</div>
-            </div>
-            <button id="clear-data-btn" class="ios-danger-btn">Verlauf löschen</button>
+            <h3 class="menu-title">MENÜ</h3>
+            <button class="menu-item active" data-target="view-setup">Startseite</button>
+            <button class="menu-item" data-target="view-history">Verlauf</button>
+            <button class="menu-item" data-target="view-insights">Insights</button>
+            <div class="menu-footer">NXT Reutlingen v2.2</div>
         </div>
-    </div>
+    </nav>
 
-    <main>
+    <section id="view-setup" class="view active-view">
+        <div class="center-content">
+            <div class="glass-card lobby-card">
+                <h2>NEUES SPIEL</h2>
+                <p class="subtitle">Spieler zuweisen</p>
+                
+                <div class="input-group">
+                    <label class="label-blue">Team Blau</label>
+                    <input type="text" id="p1-name" placeholder="Name" value="Blau">
+                </div>
+                
+                <div class="input-group">
+                    <label class="label-orange">Team Orange</label>
+                    <input type="text" id="p2-name" placeholder="Name" value="Orange">
+                </div>
+
+                <button id="start-game-btn" class="primary-btn big-btn">
+                    STARTEN
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                        <polyline points="12 5 19 12 12 19"></polyline>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </section>
+
+    <section id="view-game" class="view">
         <div id="camera-container">
             <div class="camera-hex-wrapper">
                 <video id="video" playsinline autoplay muted></video>
                 <canvas id="canvas" style="display:none;"></canvas>
                 <div class="hex-border"></div>
             </div>
-            
-            <div class="instruction-text">
-                Brett im Sechseck platzieren
-            </div>
+            <div class="instruction-badge">Scanner bereit</div>
         </div>
 
-        <div id="controls-sheet">
-            <div id="controls-content">
-                <button id="scan-btn" class="primary-btn">
-                    Auswerten
-                </button>
-                
-                <div id="result-display" class="hidden fade-in">
-                    <div class="result-header">
-                        <h2 id="winner-msg">Analysiere...</h2>
+        <div id="controls-sheet" class="glass-sheet">
+            <button id="scan-btn" class="primary-btn">AUSWERTEN</button>
+            <button id="stop-game-btn" class="text-btn">Beenden</button>
+            
+            <div id="result-display" class="hidden fade-in">
+                <div class="result-header"><h2 id="winner-msg">Analysiere...</h2></div>
+                <div class="score-cards-row">
+                    <div class="score-glass p1-card">
+                        <span class="label" id="res-label-p1">Blau</span>
+                        <strong id="score-p1">-</strong>
                     </div>
-
-                    <div class="score-cards-row">
-                        <div class="score-card p1-card">
-                            <span class="label">Blau</span><strong id="score-p1">-</strong>
-                        </div>
-                        <div class="score-card p2-card">
-                            <span class="label">Orange</span><strong id="score-p2">-</strong>
-                        </div>
+                    <div class="score-glass p2-card">
+                        <span class="label" id="res-label-p2">Orange</span>
+                        <strong id="score-p2">-</strong>
                     </div>
-
-                    <div class="button-group">
-                        <button id="save-btn" class="action-btn save">Speichern</button>
-                        <button id="reset-btn" class="action-btn reset">Neu</button>
-                    </div>
+                </div>
+                <div class="button-group">
+                    <button id="save-btn" class="action-btn save">SPEICHERN</button>
+                    <button id="retry-btn" class="action-btn reset">WIEDERHOLEN</button>
                 </div>
             </div>
         </div>
-    </main>
+    </section>
 
-    <div id="ios-install-prompt" class="ios-prompt hidden">
-        <div class="prompt-content">
-            <p>App installieren:</p>
-            <p>Tippe auf <span class="share-icon"></span> und dann <strong>"Zum Home-Bildschirm"</strong></p>
+    <section id="view-history" class="view view-scroll">
+        <div class="content-padding">
+            <div class="header-row">
+                <h2>VERLAUF</h2>
+                <button id="delete-btn" class="text-btn-danger">Leeren</button>
+            </div>
+            <div id="history-list" class="glass-list">
+                <div class="empty-state">Keine Daten</div>
+            </div>
+        </div>
+    </section>
+
+    <section id="view-insights" class="view view-scroll">
+        <div class="content-padding">
+            <h2>INSIGHTS</h2>
+            <div class="glass-card">
+                <h3>Das Projekt</h3>
+                <p>Digitale Erweiterung eines physischen Spiels mittels Computer Vision Technologie.</p>
+            </div>
+            <div class="glass-card highlight-card">
+                <h3>Fakultät NXT</h3>
+                <p>Nachhaltigkeit & Technologie studieren.</p>
+                <a href="https://www.nxt.reutlingen-university.de/" target="_blank" class="link-btn">
+                    Zur Website
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3"/></svg>
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <div id="ios-install-prompt" class="clean-prompt hidden">
+        <div class="prompt-text">
+            <strong>App installieren:</strong><br>
+            Tippe auf <span class="share-icon-svg"></span> und wähle <em>"Zum Home-Bildschirm"</em>
         </div>
         <div class="prompt-arrow"></div>
         <button id="close-prompt" class="prompt-close">×</button>
