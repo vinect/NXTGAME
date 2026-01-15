@@ -2,7 +2,6 @@
 const MAX_PLAYERS = 4;
 const MIN_PLAYERS = 2;
 
-// FARBEN
 const COLOR_DEFS = {
     magenta: { name: 'Magenta', hex: '#F20089', hsvLow: [145, 100, 80, 0], hsvHigh: [175, 255, 255, 255] },
     yellow: { name: 'Gelb', hex: '#FFD600', hsvLow: [20, 100, 100, 0], hsvHigh: [35, 255, 255, 255] },
@@ -10,12 +9,7 @@ const COLOR_DEFS = {
     green: { name: 'Grün', hex: '#00C853', hsvLow: [35, 50, 50, 0], hsvHigh: [85, 255, 255, 255] }
 };
 
-// Start State
-let players = [
-    { name: 'Spieler 1', colorKey: 'magenta', score: 0 },
-    { name: 'Spieler 2', colorKey: 'yellow', score: 0 }
-];
-
+let players = [ { name: 'Spieler 1', colorKey: 'magenta', score: 0 }, { name: 'Spieler 2', colorKey: 'yellow', score: 0 } ];
 let cvReady = false;
 let streamObject = null;
 let activeViewId = 'view-setup';
@@ -45,6 +39,11 @@ const deleteBtn = document.getElementById('delete-btn');
 const fabHome = document.getElementById('fab-home');
 const randomStartBtn = document.getElementById('random-start-btn');
 const randomResultDisplay = document.getElementById('random-result');
+// Install Elements
+const installModal = document.getElementById('install-modal');
+const installInstructions = document.getElementById('install-instructions');
+const installDismissBtn = document.getElementById('install-dismiss-btn');
+const closeInstallBtn = document.getElementById('close-install');
 
 function onOpenCvReady() { console.log("NXT Engine Ready"); cvReady = true; }
 
@@ -56,28 +55,19 @@ function renderPlayers() {
         const colorData = COLOR_DEFS[p.colorKey];
         card.className = 'player-card';
         card.style.borderLeftColor = colorData.hex;
-
         let dotsHtml = '';
         Object.keys(COLOR_DEFS).forEach(key => {
             const def = COLOR_DEFS[key];
             const isActive = (p.colorKey === key) ? 'active' : '';
             dotsHtml += `<div class="color-option ${isActive}" style="background:${def.hex};" onclick="setPlayerColor(${idx}, '${key}')"></div>`;
         });
-
-        card.innerHTML = `
-            <div class="player-name-row">
-                <span class="player-label">Name</span>
-                <input type="text" class="player-input" value="${p.name}" data-idx="${idx}" onchange="updatePlayerName(this)" placeholder="Name">
-            </div>
-            <div class="color-picker">${dotsHtml}</div>
-        `;
+        card.innerHTML = `<div class="player-name-row"><span class="player-label">Name</span><input type="text" class="player-input" value="${p.name}" data-idx="${idx}" onchange="updatePlayerName(this)" placeholder="Name"></div><div class="color-picker">${dotsHtml}</div>`;
         playersContainer.appendChild(card);
     });
     playerCountDisplay.innerText = `${players.length}`;
     addPlayerBtn.disabled = players.length >= MAX_PLAYERS;
     removePlayerBtn.disabled = players.length <= MIN_PLAYERS;
 }
-
 window.updatePlayerName = (input) => { players[input.dataset.idx].name = input.value; };
 window.setPlayerColor = (playerIdx, newColorKey) => {
     const otherPlayerIdx = players.findIndex(p => p.colorKey === newColorKey);
@@ -86,15 +76,7 @@ window.setPlayerColor = (playerIdx, newColorKey) => {
     players[playerIdx].colorKey = newColorKey;
     renderPlayers();
 };
-
-addPlayerBtn.addEventListener('click', () => {
-    if (players.length < MAX_PLAYERS) {
-        const taken = players.map(p => p.colorKey);
-        const freeKey = Object.keys(COLOR_DEFS).find(k => !taken.includes(k)) || 'magenta';
-        players.push({ name: `Spieler ${players.length+1}`, colorKey: freeKey, score: 0 });
-        renderPlayers();
-    }
-});
+addPlayerBtn.addEventListener('click', () => { if (players.length < MAX_PLAYERS) { const taken = players.map(p => p.colorKey); const freeKey = Object.keys(COLOR_DEFS).find(k => !taken.includes(k)) || 'magenta'; players.push({ name: `Spieler ${players.length+1}`, colorKey: freeKey, score: 0 }); renderPlayers(); } });
 removePlayerBtn.addEventListener('click', () => { if (players.length > MIN_PLAYERS) { players.pop(); renderPlayers(); } });
 
 // --- RANDOM STARTER ---
@@ -151,7 +133,27 @@ document.addEventListener("visibilitychange", async () => {
     else { if (activeViewId === 'view-game') setTimeout(startCamera, 300); }
 });
 
-// --- GAME ---
+// --- INSTALL BANNER LOGIC ---
+function checkInstallState() {
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+    if (isStandalone) return; 
+
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    const isAndroid = /Android/.test(navigator.userAgent);
+
+    if (isIOS) {
+        installInstructions.innerHTML = `1. Tippe unten auf <span class="step-icon icon-ios-share"></span><br>2. Wähle <strong>"Zum Home-Bildschirm"</strong>`;
+        setTimeout(() => installModal.classList.remove('hidden'), 2000);
+    } else if (isAndroid) {
+        installInstructions.innerHTML = `1. Tippe oben auf <span class="step-icon icon-android-menu"></span><br>2. Wähle <strong>"App installieren"</strong> oder <strong>"Zum Startbildschirm"</strong>`;
+        setTimeout(() => installModal.classList.remove('hidden'), 2000);
+    }
+}
+installDismissBtn.onclick = () => installModal.classList.add('hidden');
+closeInstallBtn.onclick = () => installModal.classList.add('hidden');
+window.addEventListener('load', checkInstallState);
+
+// --- GAME LOGIC ---
 startBtn.addEventListener('click', () => { resetGameUI(); switchView('view-game'); });
 nextGameBtn.addEventListener('click', () => switchView('view-setup'));
 
@@ -161,8 +163,7 @@ function resetGameUI() {
     instructionText.innerText = "Suche 37 Pins...";
     instructionText.classList.remove('scanning', 'success'); instructionText.style.background = "rgba(0,0,0,0.6)";
     scanLine.classList.add('hidden'); lockOverlay.classList.add('hidden'); lockOverlay.classList.remove('flash');
-    stabilityCounter = 0;
-    randomResultDisplay.classList.add('hidden');
+    stabilityCounter = 0; randomResultDisplay.classList.add('hidden');
 }
 
 async function startCamera() {
@@ -183,7 +184,6 @@ function startAutoScan() {
 }
 function stopAutoScan() { isScanning = false; clearInterval(scanInterval); scanLine.classList.add('hidden'); instructionText.classList.remove('scanning'); }
 
-// --- PIN CHECK (SQUARE LOGIC) ---
 function runPinCheck() {
     if (!video.videoWidth) return;
     const w = 320; const h = 240;
@@ -210,12 +210,9 @@ function runPinCheck() {
                 let rect = cv.boundingRect(cnt);
                 let aspectRatio = rect.width / rect.height;
                 if (aspectRatio > 0.7 && aspectRatio < 1.3) {
-                    let hull = new cv.Mat();
-                    cv.convexHull(cnt, hull);
-                    let hullArea = cv.contourArea(hull);
-                    let solidity = area / hullArea;
-                    hull.delete();
-                    if (solidity > 0.8) pinCount++;
+                    let hull = new cv.Mat(); cv.convexHull(cnt, hull);
+                    let hullArea = cv.contourArea(hull); let solidity = area / hullArea;
+                    hull.delete(); if (solidity > 0.8) pinCount++;
                 }
             }
         }
@@ -225,19 +222,15 @@ function runPinCheck() {
             let p = Math.min(100, Math.round((stabilityCounter/REQUIRED_STABILITY)*100));
             instructionText.innerText = `Brett erkannt... ${p}%`;
             instructionText.classList.add('success');
-            
             if (stabilityCounter >= REQUIRED_STABILITY) {
-                lockOverlay.classList.remove('hidden');
-                lockOverlay.classList.add('flash');
+                lockOverlay.classList.remove('hidden'); lockOverlay.classList.add('flash');
                 setTimeout(triggerFullAnalysis, 600);
             }
         } else {
             stabilityCounter = Math.max(0, stabilityCounter - 1);
             if (stabilityCounter === 0) { 
                 instructionText.innerText = `Suche 37 Pins...`; 
-                instructionText.classList.remove('success'); 
-                lockOverlay.classList.add('hidden');
-                lockOverlay.classList.remove('flash');
+                instructionText.classList.remove('success'); lockOverlay.classList.add('hidden'); lockOverlay.classList.remove('flash');
             }
         }
         src.delete(); gray.delete(); binary.delete(); contours.delete();
@@ -280,9 +273,9 @@ function finishGameAndSave() {
     const rankedPlayers = [...players].sort((a,b) => b.score - a.score);
     const winner = rankedPlayers[0];
     
-    let history = JSON.parse(localStorage.getItem('nxt_games_v14')) || [];
+    let history = JSON.parse(localStorage.getItem('nxt_games_v15')) || [];
     history.push({ date: new Date().toISOString(), winner: winner.name, topScore: winner.score, players: players.map(p=>({n:p.name, s:p.score})) });
-    localStorage.setItem('nxt_games_v14', JSON.stringify(history));
+    localStorage.setItem('nxt_games_v15', JSON.stringify(history));
 
     rankedPlayers.forEach((p, idx) => {
         const rank = idx + 1;
@@ -302,7 +295,7 @@ function finishGameAndSave() {
 retryBtn.onclick = () => { resetGameUI(); startAutoScan(); if(video.paused) video.play(); };
 
 function renderHistory() {
-    let history = JSON.parse(localStorage.getItem('nxt_games_v14')) || [];
+    let history = JSON.parse(localStorage.getItem('nxt_games_v15')) || [];
     historyList.innerHTML = '';
     if(history.length === 0) { historyList.innerHTML = '<div class="empty-state">Keine Einträge</div>'; return; }
     history.slice().reverse().forEach(g => {
@@ -313,8 +306,6 @@ function renderHistory() {
         historyList.appendChild(div);
     });
 }
-deleteBtn.onclick = () => { if(confirm('Löschen?')) { localStorage.removeItem('nxt_games_v14'); renderHistory(); } };
+deleteBtn.onclick = () => { if(confirm('Löschen?')) { localStorage.removeItem('nxt_games_v15'); renderHistory(); } };
 
 renderPlayers();
-checkIOS();
-function checkIOS() { const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream; const isStandalone = window.matchMedia('(display-mode: standalone)').matches; if (isIOS && !isStandalone) { const p = document.getElementById('ios-install-prompt'); setTimeout(() => p.classList.remove('hidden'), 2000); document.getElementById('close-prompt').onclick = () => p.classList.add('hidden'); } }

@@ -34,10 +34,11 @@
         <div class="menu-content">
             <h3 class="menu-title">MENÜ</h3>
             <button class="menu-item active" data-target="view-setup">Startseite</button>
+            <button class="menu-item" data-target="view-share">Teilen (QR)</button>
             <button class="menu-item" data-target="view-instructions">Anleitung</button>
             <button class="menu-item" data-target="view-history">Verlauf</button>
             <button class="menu-item" data-target="view-insights">Insights</button>
-            <div class="menu-footer">NXT Reutlingen v14.1</div>
+            <div class="menu-footer">NXT Reutlingen v15.1</div>
         </div>
     </nav>
 
@@ -101,13 +102,28 @@
                     <h2 id="winner-msg">Analysiere...</h2>
                     <div id="status-pill" class="status-saved">Gespeichert ✅</div>
                 </div>
-                
                 <div id="score-list" class="ranking-list"></div>
-                
                 <div class="button-group">
                     <button id="next-game-btn" class="primary-btn action-main-btn">NEUES SPIEL</button>
                 </div>
                 <button id="retry-btn" class="text-btn" style="margin-top:10px; width:100%">Messung wiederholen</button>
+            </div>
+        </div>
+    </section>
+
+    <section id="view-share" class="view view-scroll">
+        <div class="center-content">
+            <div class="glass-card lobby-card">
+                <h2>APP TEILEN</h2>
+                <p class="subtitle">Scannen zum Mitspielen</p>
+                
+                <div class="qr-display-wrapper">
+                    <img src="qrcode.png" alt="QR Code" class="static-qr">
+                </div>
+                
+                <p style="margin-top:20px; font-size:0.9rem; color:#666;">
+                    Scanne diesen Code, um die App direkt zu öffnen.
+                </p>
             </div>
         </div>
     </section>
@@ -146,10 +162,6 @@
     <section id="view-insights" class="view view-scroll">
         <div class="content-padding">
             <h2>INSIGHTS</h2>
-            <div class="glass-card">
-                <h3>Präzisions-Scan</h3>
-                <p>NXTgame v14.1 nutzt Circularity- und Solidity-Checks, um die eckigen Holzpins von der Maserung zu unterscheiden.</p>
-            </div>
             <div class="glass-card highlight-card">
                 <h3>Fakultät NXT</h3>
                 <a href="https://www.nxt.reutlingen-university.de/" target="_blank" class="link-btn">Zur Website →</a>
@@ -157,11 +169,14 @@
         </div>
     </section>
 
-    <div id="ios-install-prompt" class="clean-prompt hidden">
-        <div class="prompt-text">
-            <strong>App installieren:</strong><br>Tippe auf <span class="share-icon-svg"></span> und wähle <em>"Zum Home-Bildschirm"</em>
+    <div id="install-modal" class="install-modal hidden">
+        <div class="install-content glass-card">
+            <button id="close-install" class="close-icon-btn">×</button>
+            <div class="install-icon">📲</div>
+            <h3>App installieren</h3>
+            <div id="install-instructions"></div>
+            <button id="install-dismiss-btn" class="primary-btn" style="margin-top:20px;">Verstanden</button>
         </div>
-        <div class="prompt-arrow"></div><button id="close-prompt" class="prompt-close">×</button>
     </div>
 
     <script src="script.js"></script>
