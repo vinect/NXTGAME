@@ -1,11 +1,10 @@
 document.addEventListener("DOMContentLoaded", () => {
-    console.log("NXTgame v18.0 Grid-Lock gestartet");
+    console.log("NXTgame v18.4 Grid-Logic gestartet");
     initGame();
 });
 
-// --- 1. DAS SPIELFELD (GRID) ---
-// Koordinaten in mm relativ zur Mitte (0,0), basierend auf deiner CSV.
-// X ist horizontal, Y vertikal.
+// --- 1. DAS GRID (Aus deiner CSV) ---
+// X/Y in mm, relativ zur Mitte.
 const PIN_GRID = [
     { id: 1, x: -112.5, y: -64.95 }, { id: 2, x: -112.5, y: -21.65 }, { id: 3, x: -112.5, y: 21.65 }, { id: 4, x: -112.5, y: 64.95 },
     { id: 5, x: -75.0, y: -86.60 }, { id: 6, x: -75.0, y: -43.30 }, { id: 7, x: -75.0, y: 0.00 }, { id: 8, x: -75.0, y: 43.30 }, { id: 9, x: -75.0, y: 86.60 },
@@ -15,175 +14,140 @@ const PIN_GRID = [
     { id: 29, x: 75.0, y: -86.60 }, { id: 30, x: 75.0, y: -43.30 }, { id: 31, x: 75.0, y: 0.00 }, { id: 32, x: 75.0, y: 43.30 }, { id: 33, x: 75.0, y: 86.60 },
     { id: 34, x: 112.5, y: -64.95 }, { id: 35, x: 112.5, y: -21.65 }, { id: 36, x: 112.5, y: 21.65 }, { id: 37, x: 112.5, y: 64.95 }
 ];
-
-// Physische Größe des Bretts (Breite Seite-zu-Seite in mm)
-const BOARD_WIDTH_MM = 250; 
+// Radius (Mitte zu Ecke) in mm
+const BOARD_RADIUS_MM = 140; 
 
 // --- CONFIG ---
 const MAX_PLAYERS = 4;
 const MIN_PLAYERS = 2;
 
 const COLORS = {
-    magenta: { name: 'Magenta', hex: '#D500F9', hsvLow: [140, 60, 60, 0], hsvHigh: [175, 255, 255, 255] },
-    yellow:  { name: 'Gelb',    hex: '#FFD600', hsvLow: [20, 80, 80, 0],  hsvHigh: [40, 255, 255, 255] },
-    blue:    { name: 'Blau',    hex: '#2962FF', hsvLow: [100, 80, 50, 0], hsvHigh: [135, 255, 255, 255] },
-    green:   { name: 'Grün',    hex: '#00C853', hsvLow: [40, 60, 50, 0],  hsvHigh: [85, 255, 255, 255] }
+    magenta: { name: 'Magenta', hex: '#D500F9', hsvLow: [135, 50, 50, 0], hsvHigh: [175, 255, 255, 255] },
+    yellow:  { name: 'Gelb',    hex: '#FFD600', hsvLow: [15, 80, 80, 0],  hsvHigh: [40, 255, 255, 255] },
+    blue:    { name: 'Blau',    hex: '#2962FF', hsvLow: [95, 80, 50, 0],  hsvHigh: [130, 255, 255, 255] },
+    green:   { name: 'Grün',    hex: '#00C853', hsvLow: [40, 50, 50, 0],  hsvHigh: [90, 255, 255, 255] }
 };
 
-let players = [ { name: 'Spieler 1', colorKey: 'magenta', score: 0 }, { name: 'Spieler 2', colorKey: 'yellow', score: 0 } ];
+let players = [{name:'Spieler 1', colorKey:'magenta', score:0}, {name:'Spieler 2', colorKey:'yellow', score:0}];
 let cvReady = false;
 let streamObject = null;
 let isScanning = false;
 let scanInterval = null;
 let stabilityCounter = 0;
-const REQUIRED_STABILITY = 6; 
+let detectedBoard = null;
 
-// ELEMENTS
-const elements = {
-    video: document.getElementById('video'),
-    canvas: document.getElementById('canvas'),
-    playersContainer: document.getElementById('players-container'),
-    playerCountDisplay: document.getElementById('player-count-display'),
-    addPlayerBtn: document.getElementById('add-player-btn'),
-    removePlayerBtn: document.getElementById('remove-player-btn'),
-    startBtn: document.getElementById('start-game-btn'),
-    instructionText: document.getElementById('instruction-text'),
-    scanLine: document.getElementById('scan-line'),
-    lockOverlay: document.getElementById('lock-overlay'),
-    controlsSheet: document.getElementById('controls-sheet'),
-    scoreList: document.getElementById('score-list'),
-    winnerMsg: document.getElementById('winner-msg'),
-    nextGameBtn: document.getElementById('next-game-btn'),
-    retryBtn: document.getElementById('retry-btn'),
-    fabHome: document.getElementById('fab-home'),
-    randomStartBtn: document.getElementById('random-start-btn'),
-    randomResultDisplay: document.getElementById('random-result'),
-    installModal: document.getElementById('install-modal'),
-    installInstructions: document.getElementById('install-instructions'),
-    installDismissBtn: document.getElementById('install-dismiss-btn'),
-    closeInstallBtn: document.getElementById('close-install')
-};
+// Elemente-Cache
+let elements = {};
+
+function onOpenCvReady() { console.log("OpenCV Ready"); cvReady = true; }
 
 function initGame() {
+    // Elemente sicher abrufen
+    elements = {
+        video: document.getElementById('video'),
+        canvas: document.getElementById('canvas'),
+        overlayCanvas: document.getElementById('overlay-canvas'),
+        playersContainer: document.getElementById('players-container'),
+        playerCountDisplay: document.getElementById('player-count-display'),
+        addPlayerBtn: document.getElementById('add-player-btn'),
+        removePlayerBtn: document.getElementById('remove-player-btn'),
+        startBtn: document.getElementById('start-game-btn'),
+        instructionText: document.getElementById('instruction-text'),
+        scanLine: document.getElementById('scan-line'),
+        lockOverlay: document.getElementById('lock-overlay'),
+        controlsSheet: document.getElementById('controls-sheet'),
+        scoreList: document.getElementById('score-list'),
+        winnerMsg: document.getElementById('winner-msg'),
+        nextGameBtn: document.getElementById('next-game-btn'),
+        retryBtn: document.getElementById('retry-btn'),
+        fabHome: document.getElementById('fab-home'),
+        randomStartBtn: document.getElementById('random-start-btn'),
+        randomResultDisplay: document.getElementById('random-result'),
+        installModal: document.getElementById('install-modal'),
+        installInstructions: document.getElementById('install-instructions'),
+        installDismissBtn: document.getElementById('install-dismiss-btn'),
+        closeInstallBtn: document.getElementById('close-install'),
+        menuBtn: document.getElementById('menu-btn'),
+        sideMenu: document.getElementById('side-menu'),
+        menuOverlay: document.getElementById('side-menu-overlay')
+    };
+
     renderPlayers();
     checkInstallState();
     
-    if(elements.addPlayerBtn) elements.addPlayerBtn.onclick = addPlayer;
-    if(elements.removePlayerBtn) elements.removePlayerBtn.onclick = removePlayer;
-    if(elements.startBtn) elements.startBtn.onclick = () => { resetGameUI(); switchView('view-game'); };
-    if(elements.nextGameBtn) elements.nextGameBtn.onclick = () => switchView('view-setup');
-    if(elements.retryBtn) elements.retryBtn.onclick = () => { resetGameUI(); startAutoScan(); if(elements.video.paused) elements.video.play(); };
-    if(elements.fabHome) elements.fabHome.onclick = () => switchView('view-setup');
+    // UI Event Listeners
+    if(elements.menuBtn) elements.menuBtn.onclick = () => { elements.sideMenu.classList.toggle('open'); elements.menuOverlay.classList.toggle('open'); };
+    if(elements.menuOverlay) elements.menuOverlay.onclick = () => { elements.sideMenu.classList.remove('open'); elements.menuOverlay.classList.remove('open'); };
+    
+    document.querySelectorAll('.menu-item').forEach(btn => {
+        btn.onclick = () => {
+            elements.sideMenu.classList.remove('open'); elements.menuOverlay.classList.remove('open');
+            switchView(btn.dataset.target);
+        };
+    });
+
+    if(elements.startBtn) elements.startBtn.onclick = () => switchView('view-game');
+    
+    if(elements.addPlayerBtn) elements.addPlayerBtn.onclick = () => { 
+        if(players.length<4) { players.push({name:`S${players.length+1}`, colorKey:'blue', score:0}); renderPlayers(); }
+    };
+    if(elements.removePlayerBtn) elements.removePlayerBtn.onclick = () => { 
+        if(players.length>2) { players.pop(); renderPlayers(); }
+    };
+    
     if(elements.randomStartBtn) elements.randomStartBtn.onclick = runRandomStarter;
+    
+    if(elements.nextGameBtn) elements.nextGameBtn.onclick = () => switchView('view-setup');
+    
+    if(elements.retryBtn) elements.retryBtn.onclick = () => {
+        elements.controlsSheet.classList.add('hidden');
+        resetGameUI();
+        startAutoScan();
+        if(elements.video.paused) elements.video.play();
+    };
+    
     if(elements.installDismissBtn) elements.installDismissBtn.onclick = () => elements.installModal.classList.add('hidden');
     if(elements.closeInstallBtn) elements.closeInstallBtn.onclick = () => elements.installModal.classList.add('hidden');
 }
 
-function onOpenCvReady() { console.log("OpenCV Ready"); cvReady = true; }
-
-// --- PLAYER MANAGEMENT ---
-function renderPlayers() {
-    if(!elements.playersContainer) return;
-    elements.playersContainer.innerHTML = '';
-    players.forEach((p, idx) => {
-        const card = document.createElement('div');
-        const colorData = COLOR_DEFS[p.colorKey];
-        card.className = 'player-card';
-        card.style.borderLeftColor = colorData.hex;
-        let dotsHtml = '';
-        Object.keys(COLOR_DEFS).forEach(key => {
-            const def = COLOR_DEFS[key];
-            const isActive = (p.colorKey === key) ? 'active' : '';
-            dotsHtml += `<div class="color-option ${isActive}" style="background:${def.hex};" onclick="setPlayerColor(${idx}, '${key}')"></div>`;
-        });
-        card.innerHTML = `<div class="player-name-row"><span class="player-label">Name</span><input type="text" class="player-input" value="${p.name}" data-idx="${idx}" onchange="updatePlayerName(this)" placeholder="Name"></div><div class="color-picker">${dotsHtml}</div>`;
-        elements.playersContainer.appendChild(card);
-    });
-    if(elements.playerCountDisplay) elements.playerCountDisplay.innerText = `${players.length}`;
-    if(elements.addPlayerBtn) elements.addPlayerBtn.disabled = players.length >= MAX_PLAYERS;
-    if(elements.removePlayerBtn) elements.removePlayerBtn.disabled = players.length <= MIN_PLAYERS;
-}
-
-window.updatePlayerName = (input) => { players[input.dataset.idx].name = input.value; };
-window.setPlayerColor = (playerIdx, newColorKey) => {
-    const otherPlayerIdx = players.findIndex(p => p.colorKey === newColorKey);
-    const oldColorKey = players[playerIdx].colorKey;
-    if (otherPlayerIdx !== -1 && otherPlayerIdx !== playerIdx) players[otherPlayerIdx].colorKey = oldColorKey;
-    players[playerIdx].colorKey = newColorKey;
-    renderPlayers();
-};
-
-function addPlayer() { if (players.length < MAX_PLAYERS) { const taken = players.map(p => p.colorKey); const freeKey = Object.keys(COLOR_DEFS).find(k => !taken.includes(k)) || 'magenta'; players.push({ name: `Spieler ${players.length+1}`, colorKey: freeKey, score: 0 }); renderPlayers(); } }
-function removePlayer() { if (players.length > MIN_PLAYERS) { players.pop(); renderPlayers(); } }
-
-function runRandomStarter() {
-    const btn = elements.randomStartBtn;
-    if (btn.disabled) return;
-    btn.disabled = true;
-    elements.randomResultDisplay.classList.remove('hidden');
-    elements.randomResultDisplay.classList.add('animating');
-    let counter = 0;
-    const interval = setInterval(() => {
-        const randomIdx = Math.floor(Math.random() * players.length);
-        elements.randomResultDisplay.innerText = players[randomIdx].name;
-        counter++;
-        if (counter >= 15) {
-            clearInterval(interval);
-            const finalIdx = Math.floor(Math.random() * players.length);
-            elements.randomResultDisplay.innerText = `${players[finalIdx].name} fängt an!`;
-            elements.randomResultDisplay.classList.remove('animating');
-            if(navigator.vibrate) navigator.vibrate([50, 100]);
-            btn.disabled = false;
-        }
-    }, 80);
-}
-
-// --- NAVIGATION ---
-const sideMenu = document.getElementById('side-menu');
-const menuOverlay = document.getElementById('side-menu-overlay');
-const menuBtn = document.getElementById('menu-btn');
-
-if(menuBtn) {
-    menuBtn.onclick = () => { sideMenu.classList.toggle('open'); menuOverlay.classList.toggle('open'); };
-    menuOverlay.onclick = () => { sideMenu.classList.remove('open'); menuOverlay.classList.remove('open'); };
-}
-
 function switchView(id) {
-    sideMenu.classList.remove('open'); menuOverlay.classList.remove('open');
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active-view'));
-    document.getElementById(id).classList.add('active-view');
-    elements.fabHome.classList.toggle('hidden', id === 'view-setup');
-    if (id === 'view-game') startCamera(); else { stopCamera(); stopAutoScan(); }
-    if (id === 'view-history') renderHistory();
+    const view = document.getElementById(id);
+    if(view) view.classList.add('active-view');
+    if(id === 'view-game') startCamera(); else { stopCamera(); stopAutoScan(); }
+    if(id === 'view-history') renderHistory();
 }
 
-// --- SCANNING LOGIC ---
+// --- CORE LOGIC: BOARD DETECTION & GRID ---
 function resetGameUI() {
     elements.controlsSheet.classList.add('hidden');
-    elements.canvas.style.display = 'none'; elements.video.style.display = 'block';
+    elements.canvas.style.display = 'none'; 
+    elements.video.style.display = 'block';
     elements.instructionText.innerText = "Suche Spielfeld...";
-    elements.instructionText.classList.remove('success'); elements.lockOverlay.classList.add('hidden'); elements.lockOverlay.classList.remove('flash');
+    elements.instructionText.classList.remove('success');
+    // Clear Overlay
+    if(elements.overlayCanvas) {
+        const ctx = elements.overlayCanvas.getContext('2d');
+        ctx.clearRect(0,0, elements.overlayCanvas.width, elements.overlayCanvas.height);
+    }
     stabilityCounter = 0;
 }
 
 async function startCamera() {
-    if (streamObject) return;
     try {
-        streamObject = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } } });
+        streamObject = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
         elements.video.srcObject = streamObject;
-        elements.video.onloadedmetadata = () => { elements.video.play(); elements.canvas.width = elements.video.videoWidth; elements.canvas.height = elements.video.videoHeight; startAutoScan(); };
-    } catch (e) { console.error(e); alert("Kamera-Fehler"); }
+        elements.video.onloadedmetadata = () => { elements.video.play(); startAutoScan(); };
+    } catch(e) { console.log(e); alert("Kamera-Zugriff verweigert oder nicht möglich."); }
 }
-function stopCamera() { if (streamObject) { streamObject.getTracks().forEach(t => t.stop()); streamObject = null; } }
+function stopCamera() { if(streamObject) streamObject.getTracks().forEach(t=>t.stop()); }
 
 function startAutoScan() {
-    if (isScanning || !cvReady) return;
-    isScanning = true; elements.scanLine.classList.remove('hidden');
+    if(isScanning || !cvReady) return;
+    isScanning = true;
     scanInterval = setInterval(runBoardCheck, 150);
 }
-function stopAutoScan() { isScanning = false; clearInterval(scanInterval); elements.scanLine.classList.add('hidden'); }
-
-let foundBoardInfo = null; // Speichert {rect, rotation}
+function stopAutoScan() { isScanning = false; clearInterval(scanInterval); }
 
 function runBoardCheck() {
     if (!elements.video.videoWidth) return;
@@ -192,215 +156,186 @@ function runBoardCheck() {
     smallCanvas.getContext('2d').drawImage(elements.video, 0, 0, w, h);
     
     let src = cv.imread(smallCanvas);
-    let gray = new cv.Mat(); let blur = new cv.Mat(); let binary = new cv.Mat(); let contours = new cv.MatVector();
+    let gray = new cv.Mat(); let binary = new cv.Mat(); let contours = new cv.MatVector();
     
     try {
         cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-        cv.GaussianBlur(gray, blur, new cv.Size(5, 5), 0);
-        cv.threshold(blur, binary, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU);
+        // Starker Blur um Details (Löcher) zu ignorieren und nur die Form zu sehen
+        cv.GaussianBlur(gray, gray, new cv.Size(7, 7), 0);
+        cv.threshold(gray, binary, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU);
+        
         cv.findContours(binary, contours, new cv.Mat(), cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
         
         let maxArea = 0; let bestContour = null;
         for(let i=0; i<contours.size(); i++) {
-            let cnt = contours.get(i); let area = cv.contourArea(cnt);
+            let cnt = contours.get(i);
+            let area = cv.contourArea(cnt);
             if (area > maxArea) { maxArea = area; bestContour = cnt; }
         }
 
-        // Check if big enough (Board)
-        if (maxArea > (w * h * 0.15)) {
-            // Check Hexagon Shape
-            let peri = cv.arcLength(bestContour, true);
-            let approx = new cv.Mat();
-            cv.approxPolyDP(bestContour, approx, 0.04 * peri, true);
-            
-            // Wenn 6 Ecken, ist es unser Brett
-            if (approx.rows === 6) {
-                stabilityCounter++;
-                let p = Math.min(100, Math.round((stabilityCounter/REQUIRED_STABILITY)*100));
-                elements.instructionText.innerText = `Brett erkannt... ${p}%`;
-                elements.instructionText.classList.add('success');
+        // Overlay Setup
+        if(elements.overlayCanvas) {
+            elements.overlayCanvas.width = elements.video.videoWidth;
+            elements.overlayCanvas.height = elements.video.videoHeight;
+            const ctx = elements.overlayCanvas.getContext('2d');
+            ctx.clearRect(0, 0, elements.overlayCanvas.width, elements.overlayCanvas.height);
+
+            // Ist das Objekt groß genug?
+            if (maxArea > (w * h * 0.15)) {
+                // Wir nutzen den umschließenden Kreis (stabiler als Ecken-Erkennung bei Kerben)
+                let circle = cv.minEnclosingCircle(bestContour);
                 
-                let rect = cv.boundingRect(bestContour);
-                let scaleX = elements.video.videoWidth / w; 
+                // Hochskalieren auf Video-Größe
+                let scaleX = elements.video.videoWidth / w;
                 let scaleY = elements.video.videoHeight / h;
                 
-                // Wir nehmen an, dass das Brett relativ gerade liegt. 
-                // Wir speichern das Rechteck für die Analyse.
-                foundBoardInfo = {
-                    x: Math.max(0, rect.x * scaleX),
-                    y: Math.max(0, rect.y * scaleY),
-                    w: Math.min(elements.video.videoWidth, rect.width * scaleX),
-                    h: Math.min(elements.video.videoHeight, rect.height * scaleY)
+                detectedBoard = {
+                    x: circle.center.x * scaleX,
+                    y: circle.center.y * scaleY,
+                    r: circle.radius * Math.max(scaleX, scaleY)
                 };
 
-                if (stabilityCounter >= REQUIRED_STABILITY) {
-                    elements.lockOverlay.classList.remove('hidden'); elements.lockOverlay.classList.add('flash');
-                    setTimeout(triggerFullAnalysis, 600);
+                // --- VISUAL DEBUG GRID ---
+                // Zeichne das Grid auf das Overlay
+                const pxPerMm = detectedBoard.r / BOARD_RADIUS_MM;
+                ctx.fillStyle = "rgba(255, 235, 59, 0.8)"; // Leuchtendes Gelb
+                
+                PIN_GRID.forEach(pin => {
+                    let px = detectedBoard.x + (pin.x * pxPerMm);
+                    let py = detectedBoard.y + (pin.y * pxPerMm);
+                    ctx.beginPath();
+                    ctx.arc(px, py, 5, 0, 2 * Math.PI);
+                    ctx.fill();
+                });
+
+                stabilityCounter++;
+                elements.instructionText.innerText = "Grid erkannt! Stillhalten...";
+                elements.instructionText.classList.add('success');
+
+                if (stabilityCounter > 12) { // 12 Frames stabil = ca 2 Sekunden
+                    stopAutoScan();
+                    elements.instructionText.innerText = "Analysiere...";
+                    analyzeWithGrid();
                 }
             } else {
-                // Instabil, wenn Form nicht Hexagon
-                stabilityCounter = Math.max(0, stabilityCounter - 2); 
-            }
-            approx.delete();
-        } else {
-            stabilityCounter = Math.max(0, stabilityCounter - 1);
-            if (stabilityCounter === 0) { 
+                stabilityCounter = Math.max(0, stabilityCounter - 1);
                 elements.instructionText.innerText = "Suche Spielfeld...";
-                elements.instructionText.classList.remove('success'); elements.lockOverlay.classList.add('hidden');
+                elements.instructionText.classList.remove('success');
             }
         }
-        src.delete(); gray.delete(); blur.delete(); binary.delete(); contours.delete();
-    } catch(e) { stopAutoScan(); }
+        
+        src.delete(); gray.delete(); binary.delete(); contours.delete();
+    } catch(e) { console.error(e); stopAutoScan(); }
 }
 
-function triggerFullAnalysis() {
-    stopAutoScan(); elements.instructionText.innerText = "Analysiere...";
-    if(navigator.vibrate) navigator.vibrate([50, 100]);
-    const ctx = elements.canvas.getContext('2d'); ctx.drawImage(elements.video, 0, 0, elements.canvas.width, elements.canvas.height);
-    elements.video.style.display = 'none'; elements.canvas.style.display = 'block';
-    analyzeWithGrid();
-}
-
-// --- NEW ANALYSIS: GRID BASED ---
 function analyzeWithGrid() {
-    if (!foundBoardInfo) return;
-
+    // Snapshot erstellen
+    elements.canvas.width = elements.video.videoWidth;
+    elements.canvas.height = elements.video.videoHeight;
+    elements.canvas.getContext('2d').drawImage(elements.video, 0, 0);
+    elements.video.style.display = 'none';
+    elements.canvas.style.display = 'block';
+    
     let src = cv.imread(elements.canvas);
     let hsv = new cv.Mat();
+    cv.cvtColor(src, hsv, cv.COLOR_RGBA2RGB);
+    cv.cvtColor(hsv, hsv, cv.COLOR_RGB2HSV);
     
-    try {
-        // Wir schneiden das Brett aus
-        let roiRect = new cv.Rect(foundBoardInfo.x, foundBoardInfo.y, foundBoardInfo.w, foundBoardInfo.h);
-        let roi = src.roi(roiRect);
+    const pxPerMm = detectedBoard.r / BOARD_RADIUS_MM;
+    
+    players.forEach(p => {
+        p.score = 0;
+        let c = COLORS[p.colorKey];
         
-        cv.cvtColor(roi, hsv, cv.COLOR_RGBA2RGB); 
-        cv.cvtColor(hsv, hsv, cv.COLOR_RGB2HSV);
-        
-        // Berechne Skalierungsfaktor: Pixel pro mm
-        // Wir nutzen die Breite des erkannten Rechtecks
-        const pxPerMm = foundBoardInfo.w / BOARD_WIDTH_MM;
-        
-        // Mitte des ROIs
-        const centerX = foundBoardInfo.w / 2;
-        const centerY = foundBoardInfo.h / 2;
-
-        players.forEach(p => {
-            p.score = 0;
-            // Wir prüfen JEDEN Pin im Grid einzeln
-            PIN_GRID.forEach(pin => {
-                // Berechne Pixel-Position im ROI
-                // Hinweis: Y-Achse im Bild ist positiv nach unten, im Grid evtl. anders.
-                // In CSV war Y positiv nach oben? Prüfen wir. 
-                // Im CSV Bild ID 37 (oben rechts?) war Y positiv. 
-                // Im Bild ist Y=0 oben. Also müssen wir Y umkehren oder anpassen.
-                // Annahme: CSV (0,0) ist Mitte. Y+ ist oben. Bild Y+ ist unten.
-                // -> pixelY = centerY - (pin.y * pxPerMm)
+        PIN_GRID.forEach(pin => {
+            let px = Math.floor(detectedBoard.x + (pin.x * pxPerMm));
+            let py = Math.floor(detectedBoard.y + (pin.y * pxPerMm));
+            
+            // Check Color at Position (Radius 8px)
+            if(px > 0 && px < hsv.cols && py > 0 && py < hsv.rows) {
+                let matchCount = 0;
+                let totalCount = 0;
+                let rad = 8;
                 
-                let px = Math.floor(centerX + (pin.x * pxPerMm));
-                let py = Math.floor(centerY - (pin.y * pxPerMm)); // Minus Y wegen Koordinatensystem
-                
-                // Prüfe Farbe in einem kleinen Radius um diesen Punkt (z.B. 10px Radius)
-                if (px > 0 && px < roi.cols && py > 0 && py < roi.rows) {
-                    if (checkColorAt(hsv, px, py, p.colorKey)) {
-                        p.score++;
-                        // Optional: Zeichne Kreis für Debugging
-                        cv.circle(roi, new cv.Point(px, py), 10, new cv.Scalar(0, 255, 0, 255), 2);
-                    } else {
-                        cv.circle(roi, new cv.Point(px, py), 5, new cv.Scalar(255, 255, 255, 100), 1);
+                for(let ix = px-rad; ix < px+rad; ix+=2) {
+                    for(let iy = py-rad; iy < py+rad; iy+=2) {
+                        let pixel = hsv.ucharPtr(iy, ix);
+                        if(pixel[0] >= c.hsvLow[0] && pixel[0] <= c.hsvHigh[0] &&
+                           pixel[1] >= c.hsvLow[1] && pixel[1] <= c.hsvHigh[1]) {
+                            matchCount++;
+                        }
+                        totalCount++;
                     }
                 }
-            });
-        });
-        
-        cv.imshow('canvas', roi); // Zeige Ergebnis mit Kreisen
-        finishGameAndSave();
-        
-        src.delete(); hsv.delete(); roi.delete();
-    } catch(e) { console.error(e); }
-}
-
-function checkColorAt(hsvMat, x, y, colorKey) {
-    // Hole Pixelwerte in kleinem Bereich (3x3 Durchschnitt für Stabilität)
-    // Wir nehmen einfach den Center Pixel für Performance, oder eine kleine ROI
-    let radius = 6; // Radius in Pixeln, in dem wir suchen
-    let matchedPixels = 0;
-    let totalPixels = 0;
-    
-    let c = COLOR_DEFS[colorKey];
-    
-    // Einfache Bounding Box um den Pin
-    let startX = Math.max(0, x - radius);
-    let startY = Math.max(0, y - radius);
-    let endX = Math.min(hsvMat.cols, x + radius);
-    let endY = Math.min(hsvMat.rows, y + radius);
-    
-    // Scanne Bereich
-    for(let i=startX; i<endX; i+=2) { // Step 2 für Speed
-        for(let j=startY; j<endY; j+=2) {
-            let pixel = hsvMat.ucharPtr(j, i); // H, S, V
-            let h = pixel[0];
-            let s = pixel[1];
-            let v = pixel[2];
-            
-            // Check Range
-            if (h >= c.hsvLow[0] && h <= c.hsvHigh[0] &&
-                s >= c.hsvLow[1] && s <= c.hsvHigh[1] &&
-                v >= c.hsvLow[2] && v <= c.hsvHigh[2]) {
-                matchedPixels++;
+                // Wenn mehr als 20% der Pixel im Kreis die Farbe haben -> Treffer
+                if((matchCount/totalCount) > 0.20) {
+                    p.score++;
+                }
             }
-            totalPixels++;
-        }
-    }
+        });
+    });
     
-    // Wenn mehr als 30% der Pixel passen, ist die Figur da
-    return (matchedPixels / totalPixels) > 0.3;
+    src.delete(); hsv.delete();
+    finishGameAndSave();
 }
 
 function finishGameAndSave() {
     elements.controlsSheet.classList.remove('hidden');
     elements.scoreList.innerHTML = '';
-    const rankedPlayers = [...players].sort((a,b) => b.score - a.score);
-    const winner = rankedPlayers[0];
+    const ranked = [...players].sort((a,b) => b.score - a.score);
     
-    let history = JSON.parse(localStorage.getItem('nxt_games_v18')) || [];
-    history.push({ date: new Date().toISOString(), winner: winner.name, topScore: winner.score, players: players.map(p=>({n:p.name, s:p.score})) });
-    localStorage.setItem('nxt_games_v18', JSON.stringify(history));
+    let hist = JSON.parse(localStorage.getItem('nxt_games_v18')) || [];
+    hist.push({ date: new Date().toISOString(), winner: ranked[0].name, topScore: ranked[0].score, players: players.map(p=>({n:p.name, s:p.score})) });
+    localStorage.setItem('nxt_games_v18', JSON.stringify(hist));
 
-    rankedPlayers.forEach((p, idx) => {
-        const rank = idx + 1;
-        let rankClass = rank === 1 ? 'rank-1 winner-glow' : (rank === 2 ? 'rank-2' : (rank === 3 ? 'rank-3' : ''));
-        const div = document.createElement('div'); div.className = `rank-card ${rankClass}`;
-        const colorHex = COLOR_DEFS[p.colorKey].hex;
-        div.innerHTML = `<div class="rank-info"><div class="rank-pos">${rank}</div><div class="rank-dot" style="background:${colorHex}"></div><span class="rank-name">${p.name}</span></div><span class="rank-score">${p.score}</span>`;
-        elements.scoreList.appendChild(div);
+    ranked.forEach((p, i) => {
+        elements.scoreList.innerHTML += `<div class="rank-card ${i===0?'rank-1':''}"><div style="display:flex;align-items:center;gap:10px;"><span class="rank-pos">${i+1}</span><span>${p.name}</span><div class="rank-dot" style="background:${COLORS[p.colorKey].hex}"></div></div><span class="rank-score">${p.score}</span></div>`;
     });
+    
+    if(ranked[0].score > 0) confetti({particleCount:100, spread:70, origin:{y:0.6}});
+}
 
-    if (winner.score > 0) {
-        elements.winnerMsg.innerText = "Ergebnis";
-        confetti({ particleCount: 120, spread: 80, origin: { y: 0.6 }, zIndex: 1000 });
-    } else { elements.winnerMsg.innerText = "Keine Figuren?"; }
+// --- UI HELPER ---
+function renderPlayers() {
+    if(!elements.playersContainer) return;
+    elements.playersContainer.innerHTML = '';
+    players.forEach((p, idx) => {
+        let dots = ''; Object.keys(COLORS).forEach(k => dots += `<div class="color-option ${p.colorKey===k?'active':''}" style="background:${COLORS[k].hex}" onclick="setPlayerColor(${idx}, '${k}')"></div>`);
+        elements.playersContainer.innerHTML += `<div class="player-card"><div class="player-name-row"><span class="player-label">Name</span><input class="player-input" value="${p.name}" onchange="updatePlayerName(this)" data-idx="${idx}"></div><div class="color-picker">${dots}</div></div>`;
+    });
+    elements.playerCountDisplay.innerText = players.length;
+}
+
+window.updatePlayerName = (input) => { players[input.dataset.idx].name = input.value; };
+window.setPlayerColor = (idx, key) => { players[idx].colorKey = key; renderPlayers(); };
+
+function runRandomStarter() {
+    elements.randomResultDisplay.classList.remove('hidden');
+    elements.randomResultDisplay.innerText = "Würfle...";
+    setTimeout(() => {
+        elements.randomResultDisplay.innerText = players[Math.floor(Math.random()*players.length)].name + " beginnt!";
+    }, 1000);
 }
 
 function renderHistory() {
-    let history = JSON.parse(localStorage.getItem('nxt_games_v18')) || [];
-    const list = document.getElementById('history-list'); if(!list) return;
-    list.innerHTML = '';
-    if(history.length === 0) { list.innerHTML = '<div class="empty-state">Keine Einträge</div>'; return; }
-    history.slice().reverse().forEach(g => {
-        let time = new Date(g.date).toLocaleDateString('de-DE', {day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'});
-        const details = g.players.map(p => `${p.n}: ${p.s}`).join(', ');
-        const div = document.createElement('div'); div.className = 'history-item';
-        div.innerHTML = `<div><div class="hist-winner">🏆 ${g.winner} (${g.topScore})</div><div style="font-size:0.75rem;color:#666;">${details}</div></div><div style="font-size:0.7rem;color:#999;">${time}</div>`;
-        list.appendChild(div);
+    let hist = JSON.parse(localStorage.getItem('nxt_games_v18')) || [];
+    const list = document.getElementById('history-list');
+    if(!list) return;
+    list.innerHTML = hist.length ? '' : '<div class="empty-state">Keine Einträge</div>';
+    hist.slice().reverse().forEach(g => {
+        let d = new Date(g.date).toLocaleDateString('de-DE');
+        let details = g.players.map(p => `${p.n}: ${p.s}`).join(', ');
+        list.innerHTML += `<div class="history-item"><div><strong>🏆 ${g.winner} (${g.topScore})</strong><br><small>${details}</small></div><small>${d}</small></div>`;
     });
 }
 
 function checkInstallState() {
     if (!elements.installModal) return;
-    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
-    if (isStandalone) return; 
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
     const isAndroid = /Android/.test(navigator.userAgent);
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
+    if (isStandalone) return;
+
     if (isIOS) {
         elements.installInstructions.innerHTML = `1. Tippe unten auf <span class="step-icon icon-ios-share"></span><br>2. Wähle <strong>"Zum Home-Bildschirm"</strong>`;
         setTimeout(() => elements.installModal.classList.remove('hidden'), 2000);
@@ -410,4 +345,8 @@ function checkInstallState() {
     }
 }
 
-if(document.getElementById('delete-btn')) { document.getElementById('delete-btn').onclick = () => { if(confirm('Verlauf löschen?')) { localStorage.removeItem('nxt_games_v18'); renderHistory(); } }; }
+if(document.getElementById('delete-btn')) { 
+    document.getElementById('delete-btn').onclick = () => { 
+        if(confirm('Verlauf löschen?')) { localStorage.removeItem('nxt_games_v18'); renderHistory(); } 
+    }; 
+}
