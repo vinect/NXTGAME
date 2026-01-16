@@ -26,6 +26,14 @@ const SAMPLE_RADIUS_MM = 5; // ~1cm Durchmesser
 const SAT_MIN = 45;
 const VAL_MIN = 45;
 const TRIANGLE_CENTERS = buildTriangleCenters(PIN_GRID);
+const HEX_POINTS = [
+    { x: 0, y: -140 },
+    { x: 121.24, y: -70 },
+    { x: 121.24, y: 70 },
+    { x: 0, y: 140 },
+    { x: -121.24, y: 70 },
+    { x: -121.24, y: -70 }
+];
 
 let players = [
     { name: 'Spieler 1', colorKey: 'magenta', score: 0 },
@@ -33,10 +41,14 @@ let players = [
 ];
 
 let stream = null;
+let cvReady = false;
+let autoAlignActive = false;
 
 const el = {};
 const sampleCanvas = document.createElement('canvas');
 const sampleCtx = sampleCanvas.getContext('2d', { willReadFrequently: true });
+const detectCanvas = document.createElement('canvas');
+const detectCtx = detectCanvas.getContext('2d', { willReadFrequently: true });
 
 document.addEventListener('DOMContentLoaded', () => {
     initElements();
@@ -47,11 +59,13 @@ document.addEventListener('DOMContentLoaded', () => {
     renderHistory();
     checkInstallPrompt();
     registerServiceWorker();
+    initOpenCV();
 });
 
 function initElements() {
     el.video = document.getElementById('video');
     el.canvas = document.getElementById('canvas');
+    el.overlayCanvas = document.getElementById('overlay-canvas');
     el.instructionText = document.getElementById('instruction-text');
     el.gridOverlay = document.querySelector('.hex-grid-overlay');
     el.overlaySvg = document.querySelector('.hex-grid-overlay');
@@ -250,6 +264,12 @@ function resetGameUI() {
     el.controlsSheet?.classList.add('hidden');
     el.canvas.style.display = 'none';
     el.video.style.display = 'block';
+    if (el.overlaySvg) el.overlaySvg.style.opacity = '';
+    if (el.overlayCanvas) {
+        const ctx = el.overlayCanvas.getContext('2d');
+        ctx.clearRect(0, 0, el.overlayCanvas.width, el.overlayCanvas.height);
+    }
+    autoAlignActive = false;
     setScanReady(true, 'Ausrichten und SCAN');
 }
 
@@ -276,30 +296,18 @@ function triggerScan() {
     el.instructionText.textContent = 'Analysiere...';
 
     try {
-        const view = getViewBoxMetrics();
-        if (!view) {
-            setScanReady(true, 'Rahmen nicht bereit');
-            return;
-        }
-
-        const dpr = window.devicePixelRatio || 1;
-        const canvasWidth = Math.max(1, Math.round(view.rect.width * dpr));
-        const canvasHeight = Math.max(1, Math.round(view.rect.height * dpr));
-        sampleCanvas.width = canvasWidth;
-        sampleCanvas.height = canvasHeight;
-        sampleCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        drawVideoCover(sampleCtx, el.video, view.rect.width, view.rect.height);
-        const frame = sampleCtx.getImageData(0, 0, sampleCanvas.width, sampleCanvas.height);
-
         const counts = Object.keys(COLORS).reduce((acc, key) => ({ ...acc, [key]: 0 }), {});
-        const radius = Math.max(2, Math.round(SAMPLE_RADIUS_MM * view.scale * dpr));
-        TRIANGLE_CENTERS.forEach(center => {
-            const pos = mapCenterToCanvas(center, view, dpr);
-            if (!pos) return;
-            const avg = averageCircleColor(frame.data, sampleCanvas.width, sampleCanvas.height, pos.x, pos.y, radius);
-            const colorKey = classifyColor(avg);
-            if (colorKey) counts[colorKey] += 1;
-        });
+        const homography = cvReady ? detectBoardHomography() : null;
+        if (homography) {
+            autoAlignActive = true;
+            if (el.overlaySvg) el.overlaySvg.style.opacity = '0';
+            renderAutoOverlay(homography);
+            scanWithHomography(homography, counts);
+        } else {
+            autoAlignActive = false;
+            if (el.overlaySvg) el.overlaySvg.style.opacity = '';
+            scanWithStaticOverlay(counts);
+        }
 
         players.forEach(p => {
             p.score = counts[p.colorKey] || 0;
@@ -343,6 +351,311 @@ function drawVideoCover(ctx, video, width, height) {
     const dy = (height - drawH) / 2;
     ctx.clearRect(0, 0, width, height);
     ctx.drawImage(video, dx, dy, drawW, drawH);
+}
+
+function initOpenCV() {
+    if (!window.cv) return;
+    if (cv.Mat) {
+        cvReady = true;
+        return;
+    }
+    cv.onRuntimeInitialized = () => {
+        cvReady = true;
+    };
+}
+
+function detectBoardHomography() {
+    if (!cvReady || !el.video.videoWidth || !el.video.videoHeight) return null;
+
+    const maxDim = 720;
+    const scale = Math.min(1, maxDim / Math.max(el.video.videoWidth, el.video.videoHeight));
+    detectCanvas.width = Math.round(el.video.videoWidth * scale);
+    detectCanvas.height = Math.round(el.video.videoHeight * scale);
+    detectCtx.drawImage(el.video, 0, 0, detectCanvas.width, detectCanvas.height);
+
+    const src = cv.imread(detectCanvas);
+    const gray = new cv.Mat();
+    const blurred = new cv.Mat();
+    const edges = new cv.Mat();
+    cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+    cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 1.2, 1.2, cv.BORDER_DEFAULT);
+    cv.Canny(blurred, edges, 60, 160);
+
+    const contours = new cv.MatVector();
+    const hierarchy = new cv.Mat();
+    cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+    let best = null;
+    let bestArea = 0;
+    for (let i = 0; i < contours.size(); i += 1) {
+        const cnt = contours.get(i);
+        const area = cv.contourArea(cnt);
+        if (area < 5000) continue;
+        const peri = cv.arcLength(cnt, true);
+        const approx = new cv.Mat();
+        cv.approxPolyDP(cnt, approx, 0.02 * peri, true);
+        if (approx.rows === 6 && area > bestArea) {
+            if (best) best.delete();
+            best = approx;
+            bestArea = area;
+        } else {
+            approx.delete();
+        }
+        cnt.delete();
+    }
+
+    if (!best) {
+        src.delete(); gray.delete(); blurred.delete(); edges.delete();
+        contours.delete(); hierarchy.delete();
+        return null;
+    }
+
+    const points = [];
+    for (let i = 0; i < best.rows; i += 1) {
+        points.push({
+            x: best.intPtr(i, 0)[0],
+            y: best.intPtr(i, 0)[1]
+        });
+    }
+    const ordered = orderHexPoints(points);
+    const srcData = [];
+    ordered.forEach(p => { srcData.push(p.x, p.y); });
+    const dstData = [];
+    HEX_POINTS.forEach(p => { dstData.push(p.x, p.y); });
+
+    const srcMat = cv.matFromArray(6, 1, cv.CV_32FC2, srcData);
+    const dstMat = cv.matFromArray(6, 1, cv.CV_32FC2, dstData);
+    let homography = cv.findHomography(dstMat, srcMat, 0);
+
+    const refined = refineHomographyWithPins(homography, scale);
+    if (refined) {
+        homography.delete();
+        homography = refined;
+    }
+
+    src.delete(); gray.delete(); blurred.delete(); edges.delete();
+    contours.delete(); hierarchy.delete(); best.delete();
+    srcMat.delete(); dstMat.delete();
+
+    return { H: homography, scale };
+}
+
+function orderHexPoints(points) {
+    const center = points.reduce((acc, p) => ({ x: acc.x + p.x, y: acc.y + p.y }), { x: 0, y: 0 });
+    center.x /= points.length;
+    center.y /= points.length;
+    const sorted = points.slice().sort((a, b) => {
+        const angA = Math.atan2(a.y - center.y, a.x - center.x);
+        const angB = Math.atan2(b.y - center.y, b.x - center.x);
+        return angA - angB;
+    });
+    const topIndex = sorted.reduce((bestIdx, p, idx, arr) => (p.y < arr[bestIdx].y ? idx : bestIdx), 0);
+    return sorted.slice(topIndex).concat(sorted.slice(0, topIndex));
+}
+
+function refineHomographyWithPins(homography, detectScale) {
+    const pinCenters = detectPinCenters();
+    if (pinCenters.length < 12) return null;
+
+    const pairs = [];
+    const used = new Set();
+    const projected = PIN_GRID.map(pin => {
+        const p = projectPoint(homography, pin.x, pin.y);
+        return p ? { pin, x: p.x, y: p.y } : null;
+    }).filter(Boolean);
+
+    projected.forEach((p, idx) => {
+        let best = null;
+        let bestDist = Infinity;
+        for (let i = 0; i < pinCenters.length; i += 1) {
+            if (used.has(i)) continue;
+            const dx = pinCenters[i].x - p.x;
+            const dy = pinCenters[i].y - p.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist < bestDist) {
+                bestDist = dist;
+                best = i;
+            }
+        }
+        if (best !== null && bestDist < 18 * detectScale) {
+            used.add(best);
+            pairs.push({ src: p.pin, dst: pinCenters[best] });
+        }
+    });
+
+    if (pairs.length < 8) return null;
+
+    const srcData = [];
+    const dstData = [];
+    pairs.forEach(pair => {
+        srcData.push(pair.src.x, pair.src.y);
+        dstData.push(pair.dst.x, pair.dst.y);
+    });
+
+    const srcMat = cv.matFromArray(pairs.length, 1, cv.CV_32FC2, srcData);
+    const dstMat = cv.matFromArray(pairs.length, 1, cv.CV_32FC2, dstData);
+    const mask = new cv.Mat();
+    const refined = cv.findHomography(srcMat, dstMat, cv.RANSAC, 6, mask);
+
+    srcMat.delete(); dstMat.delete(); mask.delete();
+    return refined;
+}
+
+function detectPinCenters() {
+    const src = cv.imread(detectCanvas);
+    const gray = new cv.Mat();
+    const thresh = new cv.Mat();
+    cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+    cv.adaptiveThreshold(gray, thresh, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY_INV, 15, 5);
+
+    const contours = new cv.MatVector();
+    const hierarchy = new cv.Mat();
+    cv.findContours(thresh, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+    const minArea = Math.max(20, detectCanvas.width * detectCanvas.height * 0.00002);
+    const maxArea = detectCanvas.width * detectCanvas.height * 0.002;
+    const centers = [];
+    for (let i = 0; i < contours.size(); i += 1) {
+        const cnt = contours.get(i);
+        const area = cv.contourArea(cnt);
+        if (area >= minArea && area <= maxArea) {
+            const moments = cv.moments(cnt);
+            if (moments.m00 !== 0) {
+                centers.push({ x: moments.m10 / moments.m00, y: moments.m01 / moments.m00 });
+            }
+        }
+        cnt.delete();
+    }
+
+    src.delete(); gray.delete(); thresh.delete();
+    contours.delete(); hierarchy.delete();
+
+    return centers;
+}
+
+function projectPoint(homography, x, y) {
+    if (!homography) return null;
+    const h = homography.data64F || homography.data32F;
+    const denom = h[6] * x + h[7] * y + h[8];
+    if (!denom) return null;
+    const px = (h[0] * x + h[1] * y + h[2]) / denom;
+    const py = (h[3] * x + h[4] * y + h[5]) / denom;
+    return { x: px, y: py };
+}
+
+function estimateScale(homography) {
+    const projected = HEX_POINTS.map(p => projectPoint(homography, p.x, p.y)).filter(Boolean);
+    if (projected.length < 2) return 1;
+    let sum = 0;
+    for (let i = 0; i < projected.length; i += 1) {
+        const a = projected[i];
+        const b = projected[(i + 1) % projected.length];
+        const dx = a.x - b.x;
+        const dy = a.y - b.y;
+        sum += Math.sqrt(dx * dx + dy * dy);
+    }
+    const avgEdge = sum / projected.length;
+    const expectedEdge = 140;
+    return avgEdge / expectedEdge;
+}
+
+function scanWithHomography(homography, counts) {
+    const frame = detectCtx.getImageData(0, 0, detectCanvas.width, detectCanvas.height);
+    const scale = estimateScale(homography.H);
+    const radius = Math.max(2, Math.round(SAMPLE_RADIUS_MM * scale));
+
+    TRIANGLE_CENTERS.forEach(center => {
+        const p = projectPoint(homography.H, center.x, center.y);
+        if (!p) return;
+        const avg = averageCircleColor(frame.data, detectCanvas.width, detectCanvas.height, p.x, p.y, radius);
+        const colorKey = classifyColor(avg);
+        if (colorKey) counts[colorKey] += 1;
+    });
+}
+
+function scanWithStaticOverlay(counts) {
+    const view = getViewBoxMetrics();
+    if (!view) return;
+    const dpr = window.devicePixelRatio || 1;
+    const canvasWidth = Math.max(1, Math.round(view.rect.width * dpr));
+    const canvasHeight = Math.max(1, Math.round(view.rect.height * dpr));
+    sampleCanvas.width = canvasWidth;
+    sampleCanvas.height = canvasHeight;
+    sampleCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    drawVideoCover(sampleCtx, el.video, view.rect.width, view.rect.height);
+    const frame = sampleCtx.getImageData(0, 0, sampleCanvas.width, sampleCanvas.height);
+
+    const radius = Math.max(2, Math.round(SAMPLE_RADIUS_MM * view.scale * dpr));
+    TRIANGLE_CENTERS.forEach(center => {
+        const pos = mapCenterToCanvas(center, view, dpr);
+        if (!pos) return;
+        const avg = averageCircleColor(frame.data, sampleCanvas.width, sampleCanvas.height, pos.x, pos.y, radius);
+        const colorKey = classifyColor(avg);
+        if (colorKey) counts[colorKey] += 1;
+    });
+}
+
+function renderAutoOverlay(homography) {
+    if (!el.overlayCanvas || !el.cameraWrapper) return;
+    const rect = el.cameraWrapper.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    el.overlayCanvas.width = Math.max(1, Math.round(rect.width * dpr));
+    el.overlayCanvas.height = Math.max(1, Math.round(rect.height * dpr));
+    const ctx = el.overlayCanvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, rect.width, rect.height);
+
+    const coverScale = Math.max(rect.width / el.video.videoWidth, rect.height / el.video.videoHeight);
+    const offsetX = (rect.width - el.video.videoWidth * coverScale) / 2;
+    const offsetY = (rect.height - el.video.videoHeight * coverScale) / 2;
+
+    const toContainer = (p) => {
+        const videoX = p.x / homography.scale;
+        const videoY = p.y / homography.scale;
+        return {
+            x: videoX * coverScale + offsetX,
+            y: videoY * coverScale + offsetY
+        };
+    };
+
+    ctx.strokeStyle = 'rgba(0, 155, 158, 0.3)';
+    ctx.lineWidth = 1.2;
+    const connections = buildGridConnections(PIN_GRID);
+    connections.forEach(([a, b]) => {
+        const pa = projectPoint(homography.H, a.x, a.y);
+        const pb = projectPoint(homography.H, b.x, b.y);
+        if (!pa || !pb) return;
+        const ca = toContainer(pa);
+        const cb = toContainer(pb);
+        ctx.beginPath();
+        ctx.moveTo(ca.x, ca.y);
+        ctx.lineTo(cb.x, cb.y);
+        ctx.stroke();
+    });
+
+    ctx.strokeStyle = 'rgba(0, 155, 158, 0.8)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    HEX_POINTS.forEach((pt, idx) => {
+        const p = projectPoint(homography.H, pt.x, pt.y);
+        if (!p) return;
+        const c = toContainer(p);
+        if (idx === 0) ctx.moveTo(c.x, c.y);
+        else ctx.lineTo(c.x, c.y);
+    });
+    ctx.closePath();
+    ctx.stroke();
+
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+    ctx.lineWidth = 1.5;
+    PIN_GRID.forEach(pin => {
+        const p = projectPoint(homography.H, pin.x, pin.y);
+        if (!p) return;
+        const c = toContainer(p);
+        ctx.beginPath();
+        ctx.arc(c.x, c.y, 4, 0, Math.PI * 2);
+        ctx.stroke();
+    });
 }
 
 function averageCircleColor(data, width, height, cx, cy, radius) {
