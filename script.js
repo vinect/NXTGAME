@@ -2,24 +2,33 @@
 const MAX_PLAYERS = 4;
 const MIN_PLAYERS = 2;
 
-// FARBEN & HSV WERTE (Abgestimmt für Spielfiguren vs. Gummiband)
+// FARB-KALIBRIERUNG (HSV)
+// Wir machen die Bereiche etwas breiter, um verschiedene Lichtverhältnisse abzufangen.
 const COLOR_DEFS = {
-    magenta: { name: 'Magenta', hex: '#F20089', hsvLow: [140, 50, 50, 0], hsvHigh: [170, 255, 255, 255] },
-    yellow: { name: 'Gelb', hex: '#FFD600', hsvLow: [20, 100, 100, 0], hsvHigh: [40, 255, 255, 255] },
-    blue: { name: 'Blau', hex: '#2962FF', hsvLow: [100, 100, 50, 0], hsvHigh: [130, 255, 255, 255] },
-    green: { name: 'Grün', hex: '#00C853', hsvLow: [40, 50, 50, 0], hsvHigh: [85, 255, 255, 255] }
+    // Magenta (Eher Pink/Lila)
+    magenta: { name: 'Magenta', hex: '#E91E63', hsvLow: [140, 60, 60, 0], hsvHigh: [175, 255, 255, 255] },
+    // Gelb (Sehr hell)
+    yellow:  { name: 'Gelb',    hex: '#FFD600', hsvLow: [15, 80, 80, 0],  hsvHigh: [35, 255, 255, 255] },
+    // Blau (Dunkles, kräftiges Blau)
+    blue:    { name: 'Blau',    hex: '#2962FF', hsvLow: [95, 80, 60, 0],  hsvHigh: [135, 255, 255, 255] },
+    // Grün (Muss sich vom Türkis der Gummis unterscheiden!)
+    // Gummis sind meistens eher bläulich-grün (Cyan). Wir suchen hier "echtes" Grün.
+    green:   { name: 'Grün',    hex: '#00C853', hsvLow: [35, 60, 60, 0],  hsvHigh: [85, 255, 255, 255] }
 };
 
-let players = [ { name: 'Spieler 1', colorKey: 'magenta', score: 0 }, { name: 'Spieler 2', colorKey: 'yellow', score: 0 } ];
+let players = [ 
+    { name: 'Spieler 1', colorKey: 'magenta', score: 0 }, 
+    { name: 'Spieler 2', colorKey: 'yellow', score: 0 } 
+];
+
 let cvReady = false;
 let streamObject = null;
-let activeViewId = 'view-setup';
 let isScanning = false;
 let scanInterval = null;
 let stabilityCounter = 0;
-const REQUIRED_STABILITY = 6; 
+const REQUIRED_STABILITY = 5; // Etwas schneller als vorher
 
-// ELEMENTS
+// DOM Elements
 const video = document.getElementById('video');
 const canvas = document.getElementById('canvas');
 const playersContainer = document.getElementById('players-container');
@@ -119,6 +128,10 @@ function switchView(id) {
     fabHome.classList.toggle('hidden', id === 'view-setup');
     if (id === 'view-game') startCamera(); else { stopCamera(); stopAutoScan(); }
     if (id === 'view-history') renderHistory();
+    if (id === 'view-share') {
+        const container = document.querySelector('.qr-display-wrapper');
+        if(container) container.innerHTML = '<img src="qrcode.png" alt="QR Code" class="static-qr">';
+    }
 }
 
 document.querySelectorAll('.menu-item').forEach(btn => {
@@ -152,14 +165,14 @@ installDismissBtn.onclick = () => installModal.classList.add('hidden');
 closeInstallBtn.onclick = () => installModal.classList.add('hidden');
 window.addEventListener('load', checkInstallState);
 
-// --- GAME LOGIC ---
+// --- GAME LOGIC START ---
 startBtn.addEventListener('click', () => { resetGameUI(); switchView('view-game'); });
 nextGameBtn.addEventListener('click', () => switchView('view-setup'));
 
 function resetGameUI() {
     controlsSheet.classList.add('hidden');
     canvas.style.display = 'none'; video.style.display = 'block';
-    instructionText.innerText = "Suche 37 Pins...";
+    instructionText.innerText = "Suche Spielfeld..."; // Text angepasst
     instructionText.classList.remove('scanning', 'success'); instructionText.style.background = "rgba(0,0,0,0.6)";
     scanLine.classList.add('hidden'); lockOverlay.classList.add('hidden'); lockOverlay.classList.remove('flash');
     stabilityCounter = 0; randomResultDisplay.classList.add('hidden');
@@ -179,49 +192,67 @@ function stopCamera() { if (streamObject) { streamObject.getTracks().forEach(t =
 function startAutoScan() {
     if (isScanning || !cvReady) return;
     isScanning = true; scanLine.classList.remove('hidden');
-    scanInterval = setInterval(runPinCheck, 150);
+    // Wir suchen jetzt nach dem BRETT, nicht nach Pins. Das ist viel schneller.
+    scanInterval = setInterval(runBoardCheck, 150);
 }
 function stopAutoScan() { isScanning = false; clearInterval(scanInterval); scanLine.classList.add('hidden'); instructionText.classList.remove('scanning'); }
 
-// --- PHASE 1: PIN DETECTION ---
-function runPinCheck() {
+// --- PHASE 1: BRETT-ERKENNUNG (Das große helle Sechseck) ---
+let foundBoardRect = null; // Speichert wo das Brett ist
+
+function runBoardCheck() {
     if (!video.videoWidth) return;
-    const w = 320; const h = 240;
+    const w = 320; const h = 240; // Downscaling für Speed
     const smallCanvas = document.createElement('canvas'); smallCanvas.width = w; smallCanvas.height = h;
     smallCanvas.getContext('2d').drawImage(video, 0, 0, w, h);
     
     let src = cv.imread(smallCanvas);
     let gray = new cv.Mat();
+    let blur = new cv.Mat();
     let binary = new cv.Mat();
     let contours = new cv.MatVector();
     
     try {
         cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-        cv.GaussianBlur(gray, gray, new cv.Size(3, 3), 0);
-        cv.adaptiveThreshold(gray, binary, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY_INV, 11, 2);
+        cv.GaussianBlur(gray, blur, new cv.Size(5, 5), 0);
+        
+        // Thresholding: Das Brett ist HELL, Hintergrund DUNKEL.
+        // Wir nehmen OTSU Thresholding, das findet automatisch den besten Trennwert.
+        cv.threshold(blur, binary, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU);
         
         cv.findContours(binary, contours, new cv.Mat(), cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
         
-        let pinCount = 0;
+        let maxArea = 0;
+        let bestContour = null;
+
+        // Suche das größte Objekt im Bild
         for(let i=0; i<contours.size(); i++) {
             let cnt = contours.get(i);
             let area = cv.contourArea(cnt);
-            if (area > 5 && area < 200) { 
-                let rect = cv.boundingRect(cnt);
-                let aspectRatio = rect.width / rect.height;
-                if (aspectRatio > 0.7 && aspectRatio < 1.3) {
-                    let hull = new cv.Mat(); cv.convexHull(cnt, hull);
-                    let hullArea = cv.contourArea(hull); let solidity = area / hullArea;
-                    hull.delete(); if (solidity > 0.8) pinCount++;
-                }
+            if (area > maxArea) {
+                maxArea = area;
+                bestContour = cnt;
             }
         }
 
-        if (pinCount >= 25 && pinCount <= 50) {
+        // Ist das Objekt groß genug? (Mindestens 15% des Bildes)
+        if (maxArea > (w * h * 0.15)) {
             stabilityCounter++;
             let p = Math.min(100, Math.round((stabilityCounter/REQUIRED_STABILITY)*100));
             instructionText.innerText = `Brett erkannt... ${p}%`;
             instructionText.classList.add('success');
+            
+            // Speichere die Bounding Box des Bretts für später (hochskaliert auf HD)
+            let rect = cv.boundingRect(bestContour);
+            let scaleX = video.videoWidth / w;
+            let scaleY = video.videoHeight / h;
+            foundBoardRect = new cv.Rect(
+                Math.max(0, rect.x * scaleX),
+                Math.max(0, rect.y * scaleY),
+                Math.min(video.videoWidth, rect.width * scaleX),
+                Math.min(video.videoHeight, rect.height * scaleY)
+            );
+
             if (stabilityCounter >= REQUIRED_STABILITY) {
                 lockOverlay.classList.remove('hidden'); lockOverlay.classList.add('flash');
                 setTimeout(triggerFullAnalysis, 600);
@@ -229,52 +260,75 @@ function runPinCheck() {
         } else {
             stabilityCounter = Math.max(0, stabilityCounter - 1);
             if (stabilityCounter === 0) { 
-                instructionText.innerText = `Suche 37 Pins...`; 
-                instructionText.classList.remove('success'); lockOverlay.classList.add('hidden'); lockOverlay.classList.remove('flash');
+                instructionText.innerText = `Suche Spielfeld...`; 
+                instructionText.classList.remove('success'); lockOverlay.classList.add('hidden');
             }
         }
-        src.delete(); gray.delete(); binary.delete(); contours.delete();
+        
+        src.delete(); gray.delete(); blur.delete(); binary.delete(); contours.delete();
     } catch(e) { stopAutoScan(); console.error(e); }
 }
 
 function triggerFullAnalysis() {
-    stopAutoScan(); instructionText.innerText = "Auswertung...";
+    stopAutoScan(); instructionText.innerText = "Analysiere...";
     if(navigator.vibrate) navigator.vibrate([50, 100]);
     const ctx = canvas.getContext('2d'); ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     video.style.display = 'none'; canvas.style.display = 'block';
     analyzeImageFull();
 }
 
-// --- PHASE 2: PIECE COUNTING (WITH ANTI-RUBBER-BAND LOGIC) ---
+// --- PHASE 2: FIGUR-ZÄHLUNG (Mit Anti-Gummi-Magie) ---
 function analyzeImageFull() {
-    let src = cv.imread(canvas); let hsv = new cv.Mat(); let contours = new cv.MatVector();
+    let src = cv.imread(canvas);
+    
+    // Schneide das Bild auf das erkannte Brett zu (Region of Interest)
+    // Wenn kein Brett-Rect da ist, nimm das ganze Bild (Fallback)
+    let roi = foundBoardRect ? src.roi(foundBoardRect) : src;
+    
+    let hsv = new cv.Mat();
+    let contours = new cv.MatVector();
+    
     try {
-        cv.cvtColor(src, hsv, cv.COLOR_RGBA2RGB); cv.cvtColor(hsv, hsv, cv.COLOR_RGB2HSV);
-        let rect = new cv.Rect(Math.floor(canvas.width*0.1), Math.floor(canvas.height*0.1), Math.floor(canvas.width*0.8), Math.floor(canvas.height*0.8));
-        let roi = hsv.roi(rect);
+        cv.cvtColor(roi, hsv, cv.COLOR_RGBA2RGB); 
+        cv.cvtColor(hsv, hsv, cv.COLOR_RGB2HSV);
         
         players.forEach(p => {
-            let mask = new cv.Mat(); let c = COLOR_DEFS[p.colorKey];
-            let low = new cv.Mat(roi.rows, roi.cols, roi.type(), c.hsvLow); let high = new cv.Mat(roi.rows, roi.cols, roi.type(), c.hsvHigh);
-            cv.inRange(roi, low, high, mask);
+            let mask = new cv.Mat(); 
+            let c = COLOR_DEFS[p.colorKey];
             
-            // TRICK: EROSION ENTFERNT DÜNNE LINIEN (Gummibänder)
-            let kernel = cv.Mat.ones(5, 5, cv.CV_8U); // Aggressive Erosion
-            cv.erode(mask, mask, kernel);
+            let low = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), c.hsvLow); 
+            let high = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), c.hsvHigh);
             
-            // DILATION: MACHT DIE FIGUR WIEDER GROSS (aber ohne Gummis)
+            // 1. Farbanalyse
+            cv.inRange(hsv, low, high, mask);
+            
+            // 2. MAGIE: Gummibänder entfernen
+            // Gummibänder sind dünn (Linien). Figuren sind dick (Blobs).
+            // "Open" = Erosion gefolgt von Dilation.
+            // Der Kernel muss größer sein als die Dicke eines Gummibands (in Pixeln).
+            let kernelSize = 5; // Experimenteller Wert, ca. 5-7px sollte reichen
+            let kernel = cv.Mat.ones(kernelSize, kernelSize, cv.CV_8U); 
+            
+            cv.morphologyEx(mask, mask, cv.MORPH_OPEN, kernel);
+            // Optional: Danach nochmal Dilate, um die "angefressenen" Figuren wieder fett zu machen
             cv.dilate(mask, mask, kernel);
             
+            // 3. Konturen finden im "gesäuberten" Bild
             cv.findContours(mask, contours, new cv.Mat(), cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+            
             p.score = 0; 
             for(let i=0; i<contours.size(); i++) { 
-                // Nur was groß genug ist (Figur), wird gezählt
-                if(cv.contourArea(contours.get(i)) > 300) p.score++; 
+                let area = cv.contourArea(contours.get(i));
+                // Nur was jetzt noch eine gewisse Größe hat, ist eine Figur
+                if(area > 200) { 
+                    p.score++; 
+                }
             }
             mask.delete(); low.delete(); high.delete(); kernel.delete();
         });
+        
         finishGameAndSave();
-        src.delete(); hsv.delete(); roi.delete(); contours.delete();
+        src.delete(); hsv.delete(); if(foundBoardRect) roi.delete(); contours.delete();
     } catch(e) { console.error(e); }
 }
 
@@ -284,9 +338,9 @@ function finishGameAndSave() {
     const rankedPlayers = [...players].sort((a,b) => b.score - a.score);
     const winner = rankedPlayers[0];
     
-    let history = JSON.parse(localStorage.getItem('nxt_games_v16')) || [];
+    let history = JSON.parse(localStorage.getItem('nxt_games_v17')) || [];
     history.push({ date: new Date().toISOString(), winner: winner.name, topScore: winner.score, players: players.map(p=>({n:p.name, s:p.score})) });
-    localStorage.setItem('nxt_games_v16', JSON.stringify(history));
+    localStorage.setItem('nxt_games_v17', JSON.stringify(history));
 
     rankedPlayers.forEach((p, idx) => {
         const rank = idx + 1;
@@ -306,7 +360,7 @@ function finishGameAndSave() {
 retryBtn.onclick = () => { resetGameUI(); startAutoScan(); if(video.paused) video.play(); };
 
 function renderHistory() {
-    let history = JSON.parse(localStorage.getItem('nxt_games_v16')) || [];
+    let history = JSON.parse(localStorage.getItem('nxt_games_v17')) || [];
     historyList.innerHTML = '';
     if(history.length === 0) { historyList.innerHTML = '<div class="empty-state">Keine Einträge</div>'; return; }
     history.slice().reverse().forEach(g => {
@@ -317,8 +371,6 @@ function renderHistory() {
         historyList.appendChild(div);
     });
 }
-deleteBtn.onclick = () => { if(confirm('Löschen?')) { localStorage.removeItem('nxt_games_v16'); renderHistory(); } };
+deleteBtn.onclick = () => { if(confirm('Löschen?')) { localStorage.removeItem('nxt_games_v17'); renderHistory(); } };
 
 renderPlayers();
-checkIOS();
-function checkIOS() { const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream; const isStandalone = window.matchMedia('(display-mode: standalone)').matches; if (isIOS && !isStandalone) { const p = document.getElementById('ios-install-prompt'); setTimeout(() => p.classList.remove('hidden'), 2000); document.getElementById('close-prompt').onclick = () => p.classList.add('hidden'); } }
