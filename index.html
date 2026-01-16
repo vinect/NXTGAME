@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>NXT Game</title>
     <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="theme-color" content="#009B9E">
     <link rel="apple-touch-icon" href="icon.png">
@@ -15,7 +16,6 @@
     <link href="https://fonts.googleapis.com/css2?family=Source+Sans+Pro:wght@400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 
-    <script async src="https://docs.opencv.org/4.8.0/opencv.js" onload="onOpenCvReady();" type="text/javascript"></script>
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 </head>
 <body>
@@ -95,7 +95,7 @@
             </div>
 
             <div class="scan-controls">
-                <div id="instruction-text" class="status-text">OpenCV lädt...</div>
+                <div id="instruction-text" class="status-text">Ausrichten und SCAN</div>
                 <button id="trigger-scan-btn" class="scan-btn" disabled>
                     <div class="scan-ring"></div>
                     <span>SCAN</span>

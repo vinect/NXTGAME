@@ -1,6 +1,6 @@
 /**
- * NXT Game Scanner v22.0
- * Hex Board Detection + HSV Blob Sampling
+ * NXT Game Scanner v22.2
+ * Manual scan: average color in triangle centers
  */
 
 const PIN_GRID = [
@@ -21,27 +21,22 @@ const COLORS = {
 };
 
 const HISTORY_KEY = 'nxt_games_v22';
-const TARGET_SIZE = 400;
-const TARGET_RADIUS = 140;
-const TARGET_CENTER = TARGET_SIZE / 2;
+const VIEWBOX_SIZE = 300;
+const SAMPLE_RADIUS_MM = 5; // ~1cm Durchmesser
+const SAT_MIN = 45;
+const VAL_MIN = 45;
+const TRIANGLE_CENTERS = buildTriangleCenters(PIN_GRID);
 
 let players = [
     { name: 'Spieler 1', colorKey: 'magenta', score: 0 },
     { name: 'Spieler 2', colorKey: 'yellow', score: 0 }
 ];
 
-let cvReady = false;
 let stream = null;
-let scanInterval = null;
-let stabilityCounter = 0;
-let lastHomography = null;
 
 const el = {};
-
-function onOpenCvReady() {
-    cvReady = true;
-    if (el.instructionText) el.instructionText.textContent = 'Bereit - Starte ein Spiel';
-}
+const sampleCanvas = document.createElement('canvas');
+const sampleCtx = sampleCanvas.getContext('2d', { willReadFrequently: true });
 
 document.addEventListener('DOMContentLoaded', () => {
     initElements();
@@ -59,6 +54,8 @@ function initElements() {
     el.canvas = document.getElementById('canvas');
     el.instructionText = document.getElementById('instruction-text');
     el.gridOverlay = document.querySelector('.hex-grid-overlay');
+    el.overlaySvg = document.querySelector('.hex-grid-overlay');
+    el.cameraWrapper = document.querySelector('.camera-wrapper');
     el.gridLines = document.getElementById('grid-lines');
     el.pinGroup = document.getElementById('pin-template-group');
     el.scanBtn = document.getElementById('trigger-scan-btn');
@@ -151,8 +148,10 @@ function switchView(viewId) {
         if (viewId === 'view-setup') el.homeBtn.classList.add('hidden');
         else el.homeBtn.classList.remove('hidden');
     }
-    if (viewId === 'view-game') startCamera();
-    else { stopCamera(); stopAutoScan(); }
+    if (viewId === 'view-game') {
+        requestAnimationFrame(() => startCamera());
+    }
+    else stopCamera();
 }
 
 function addPlayer() {
@@ -233,7 +232,6 @@ async function startCamera() {
         el.video.onloadedmetadata = () => {
             el.video.play();
             resetGameUI();
-            startAutoScan();
         };
     } catch (err) {
         console.error(err);
@@ -248,23 +246,11 @@ function stopCamera() {
     }
 }
 
-function startAutoScan() {
-    if (scanInterval || !cvReady) return;
-    scanInterval = setInterval(detectBoardLoop, 100);
-}
-
-function stopAutoScan() {
-    clearInterval(scanInterval);
-    scanInterval = null;
-}
-
 function resetGameUI() {
     el.controlsSheet?.classList.add('hidden');
     el.canvas.style.display = 'none';
     el.video.style.display = 'block';
-    setScanReady(false, 'Suche Spielfeld...');
-    stabilityCounter = 0;
-    lastHomography = null;
+    setScanReady(true, 'Ausrichten und SCAN');
 }
 
 function setScanReady(ready, message) {
@@ -274,253 +260,181 @@ function setScanReady(ready, message) {
     if (ready) el.gridOverlay?.classList.add('ready'); else el.gridOverlay?.classList.remove('ready');
 }
 
-function detectBoardLoop() {
-    if (!el.video.videoWidth || !cvReady) return;
-    const w = 360;
-    const h = Math.round(w * (el.video.videoHeight / el.video.videoWidth));
-    const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = w;
-    tempCanvas.height = h;
-    tempCanvas.getContext('2d').drawImage(el.video, 0, 0, w, h);
-
-    let src = cv.imread(tempCanvas);
-    let gray = new cv.Mat();
-    let blur = new cv.Mat();
-    let edges = new cv.Mat();
-    let contours = new cv.MatVector();
-    let hierarchy = new cv.Mat();
-
-    try {
-        cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-        cv.GaussianBlur(gray, blur, new cv.Size(5, 5), 0);
-        cv.Canny(blur, edges, 60, 150);
-        cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-
-        let best = null;
-        let bestArea = 0;
-
-        for (let i = 0; i < contours.size(); i += 1) {
-            const cnt = contours.get(i);
-            const area = cv.contourArea(cnt);
-            if (area > bestArea) {
-                bestArea = area;
-                best = cnt;
-            }
-        }
-
-        if (!best || bestArea < w * h * 0.15) {
-            handleUnstable();
-            return;
-        }
-
-        const peri = cv.arcLength(best, true);
-        let approx = new cv.Mat();
-        let found = null;
-        for (let eps = 0.01; eps <= 0.06; eps += 0.01) {
-            cv.approxPolyDP(best, approx, peri * eps, true);
-            if (approx.rows === 6) {
-                found = approx.clone();
-                break;
-            }
-        }
-        approx.delete();
-
-        if (!found) {
-            handleUnstable();
-            return;
-        }
-
-        const points = [];
-        for (let i = 0; i < found.rows; i += 1) {
-            const x = found.intPtr(i, 0)[0];
-            const y = found.intPtr(i, 0)[1];
-            points.push({ x: x * (el.video.videoWidth / w), y: y * (el.video.videoHeight / h) });
-        }
-        found.delete();
-
-        const ordered = orderHexPoints(points);
-        if (!ordered) {
-            handleUnstable();
-            return;
-        }
-
-        const srcTri = cv.matFromArray(6, 1, cv.CV_32FC2, ordered.flatMap(p => [p.x, p.y]));
-        const dstPoints = getCanonicalHexPoints();
-        const dstTri = cv.matFromArray(6, 1, cv.CV_32FC2, dstPoints.flatMap(p => [p.x, p.y]));
-        const H = cv.getPerspectiveTransform(srcTri, dstTri);
-        srcTri.delete(); dstTri.delete();
-
-        lastHomography = H;
-        stabilityCounter++;
-        if (stabilityCounter > 5) {
-            setScanReady(true, 'Bereit - drücke SCAN');
-        } else {
-            setScanReady(false, 'Ausrichten...');
-        }
-    } catch (e) {
-        console.error(e);
-        handleUnstable();
-    } finally {
-        src.delete(); gray.delete(); blur.delete(); edges.delete(); contours.delete(); hierarchy.delete();
-    }
-}
-
-function handleUnstable() {
-    stabilityCounter = Math.max(0, stabilityCounter - 2);
-    if (stabilityCounter === 0) {
-        setScanReady(false, 'Suche Spielfeld...');
-    }
-}
-
-function orderHexPoints(points) {
-    if (points.length !== 6) return null;
-    const cx = points.reduce((sum, p) => sum + p.x, 0) / 6;
-    const cy = points.reduce((sum, p) => sum + p.y, 0) / 6;
-    const sorted = points.map(p => ({ ...p, ang: Math.atan2(p.y - cy, p.x - cx) }))
-        .sort((a, b) => a.ang - b.ang);
-    let idxTop = 0;
-    for (let i = 1; i < sorted.length; i += 1) {
-        if (sorted[i].y < sorted[idxTop].y) idxTop = i;
-    }
-    const rotated = [];
-    for (let i = 0; i < sorted.length; i += 1) {
-        rotated.push(sorted[(idxTop + i) % sorted.length]);
-    }
-    const signed = polygonSignedArea(rotated);
-    if (signed > 0) rotated.reverse();
-    return rotated.map(({ x, y }) => ({ x, y }));
-}
-
-function polygonSignedArea(points) {
-    let area = 0;
-    for (let i = 0; i < points.length; i += 1) {
-        const next = points[(i + 1) % points.length];
-        area += points[i].x * next.y - next.x * points[i].y;
-    }
-    return area / 2;
-}
-
-function getCanonicalHexPoints() {
-    const pts = [
-        { x: 0, y: -TARGET_RADIUS },
-        { x: 121.24, y: -70 },
-        { x: 121.24, y: 70 },
-        { x: 0, y: TARGET_RADIUS },
-        { x: -121.24, y: 70 },
-        { x: -121.24, y: -70 }
-    ];
-    return pts.map(p => ({ x: TARGET_CENTER + p.x, y: TARGET_CENTER + p.y }));
-}
-
 function triggerScan() {
-    if (!lastHomography || el.scanBtn.disabled) return;
-    stopAutoScan();
+    if (el.scanBtn.disabled) return;
+    if (!el.overlaySvg || !el.cameraWrapper) {
+        initElements();
+        if (!el.overlaySvg || !el.cameraWrapper) {
+            setScanReady(true, 'Ansicht nicht bereit');
+            return;
+        }
+    }
+    if (!el.video.videoWidth || !el.video.videoHeight) {
+        setScanReady(true, 'Kamera nicht bereit');
+        return;
+    }
     el.instructionText.textContent = 'Analysiere...';
 
-    el.canvas.width = el.video.videoWidth;
-    el.canvas.height = el.video.videoHeight;
-    el.canvas.getContext('2d').drawImage(el.video, 0, 0);
-    el.video.style.display = 'none';
-    el.canvas.style.display = 'block';
-
-    setTimeout(analyzeImage, 30);
-}
-
-function analyzeImage() {
-    if (!lastHomography) return;
-
-    let src = cv.imread(el.canvas);
-    let warped = new cv.Mat();
-    let hsv = new cv.Mat();
-
     try {
-        const dsize = new cv.Size(TARGET_SIZE, TARGET_SIZE);
-        cv.warpPerspective(src, warped, lastHomography, dsize, cv.INTER_LINEAR, cv.BORDER_CONSTANT, new cv.Scalar());
-        cv.cvtColor(warped, hsv, cv.COLOR_RGBA2RGB);
-        cv.cvtColor(hsv, hsv, cv.COLOR_RGB2HSV);
+        const view = getViewBoxMetrics();
+        if (!view) {
+            setScanReady(true, 'Rahmen nicht bereit');
+            return;
+        }
 
-        const colorMasks = {};
-        Object.keys(COLORS).forEach(key => {
-            colorMasks[key] = buildColorMask(hsv, COLORS[key]);
-            const kernel = cv.Mat.ones(3, 3, cv.CV_8U);
-            cv.morphologyEx(colorMasks[key], colorMasks[key], cv.MORPH_OPEN, kernel);
-            kernel.delete();
-        });
+        const dpr = window.devicePixelRatio || 1;
+        const canvasWidth = Math.max(1, Math.round(view.rect.width * dpr));
+        const canvasHeight = Math.max(1, Math.round(view.rect.height * dpr));
+        sampleCanvas.width = canvasWidth;
+        sampleCanvas.height = canvasHeight;
+        sampleCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        drawVideoCover(sampleCtx, el.video, view.rect.width, view.rect.height);
+        const frame = sampleCtx.getImageData(0, 0, sampleCanvas.width, sampleCanvas.height);
 
         const counts = Object.keys(COLORS).reduce((acc, key) => ({ ...acc, [key]: 0 }), {});
-        PIN_GRID.forEach(pin => {
-            const px = Math.round(TARGET_CENTER + pin.x);
-            const py = Math.round(TARGET_CENTER + pin.y);
-            const result = findBestColorAt(px, py, colorMasks);
-            if (result) counts[result] += 1;
+        const radius = Math.max(2, Math.round(SAMPLE_RADIUS_MM * view.scale * dpr));
+        TRIANGLE_CENTERS.forEach(center => {
+            const pos = mapCenterToCanvas(center, view, dpr);
+            if (!pos) return;
+            const avg = averageCircleColor(frame.data, sampleCanvas.width, sampleCanvas.height, pos.x, pos.y, radius);
+            const colorKey = classifyColor(avg);
+            if (colorKey) counts[colorKey] += 1;
         });
 
         players.forEach(p => {
             p.score = counts[p.colorKey] || 0;
         });
 
-        Object.values(colorMasks).forEach(mat => mat.delete());
         showResults();
-    } catch (e) {
-        console.error(e);
-        alert('Fehler bei Analyse');
+    } catch (err) {
+        console.error('Scan failed', err);
+        setScanReady(true, 'Analyse fehlgeschlagen');
+        return;
     } finally {
-        src.delete(); warped.delete(); hsv.delete();
-    }
-}
-
-function buildColorMask(hsv, cDef) {
-    const [h1, s1, v1] = cDef.hsvLow;
-    const [h2, s2, v2] = cDef.hsvHigh;
-    let mask = new cv.Mat();
-
-    if (h1 <= h2) {
-        const low = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [h1, s1, v1, 0]);
-        const high = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [h2, s2, v2, 255]);
-        cv.inRange(hsv, low, high, mask);
-        low.delete(); high.delete();
-        return mask;
+        el.video.style.display = 'block';
+        el.canvas.style.display = 'none';
     }
 
-    const low1 = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [0, s1, v1, 0]);
-    const high1 = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [h2, s2, v2, 255]);
-    const low2 = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [h1, s1, v1, 0]);
-    const high2 = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [180, s2, v2, 255]);
-    const mask1 = new cv.Mat();
-    const mask2 = new cv.Mat();
-    cv.inRange(hsv, low1, high1, mask1);
-    cv.inRange(hsv, low2, high2, mask2);
-    cv.bitwise_or(mask1, mask2, mask);
-    low1.delete(); high1.delete(); low2.delete(); high2.delete(); mask1.delete(); mask2.delete();
-    return mask;
+    setScanReady(true, 'Ausrichten und SCAN');
 }
 
-function findBestColorAt(x, y, masks) {
-    const radius = 6;
-    let bestKey = null;
-    let bestRatio = 0;
-    Object.keys(masks).forEach(key => {
-        const mask = masks[key];
-        let hits = 0;
-        let total = 0;
-        for (let dy = -radius; dy <= radius; dy += 2) {
-            for (let dx = -radius; dx <= radius; dx += 2) {
-                const px = x + dx;
-                const py = y + dy;
-                if (px < 0 || py < 0 || px >= mask.cols || py >= mask.rows) continue;
-                if (mask.ucharPtr(py, px)[0] === 255) hits++;
-                total++;
+function getViewBoxMetrics() {
+    if (!el.overlaySvg) return null;
+    const rect = el.overlaySvg.getBoundingClientRect();
+    if (!rect.width || !rect.height) return null;
+    const scale = Math.min(rect.width, rect.height) / VIEWBOX_SIZE;
+    const centerX = rect.width / 2;
+    const centerY = rect.height / 2;
+    return { rect, scale, centerX, centerY };
+}
+
+function mapCenterToCanvas(center, view, dpr) {
+    const x = view.centerX + center.x * view.scale;
+    const y = view.centerY + center.y * view.scale;
+    if (x < 0 || y < 0 || x > view.rect.width || y > view.rect.height) return null;
+    return { x: x * dpr, y: y * dpr };
+}
+
+function drawVideoCover(ctx, video, width, height) {
+    const scale = Math.max(width / video.videoWidth, height / video.videoHeight);
+    const drawW = video.videoWidth * scale;
+    const drawH = video.videoHeight * scale;
+    const dx = (width - drawW) / 2;
+    const dy = (height - drawH) / 2;
+    ctx.clearRect(0, 0, width, height);
+    ctx.drawImage(video, dx, dy, drawW, drawH);
+}
+
+function averageCircleColor(data, width, height, cx, cy, radius) {
+    let sumR = 0;
+    let sumG = 0;
+    let sumB = 0;
+    let count = 0;
+    const r2 = radius * radius;
+    for (let dy = -radius; dy <= radius; dy += 1) {
+        for (let dx = -radius; dx <= radius; dx += 1) {
+            if (dx * dx + dy * dy > r2) continue;
+            const x = Math.round(cx + dx);
+            const y = Math.round(cy + dy);
+            if (x < 0 || y < 0 || x >= width || y >= height) continue;
+            const idx = (y * width + x) * 4;
+            sumR += data[idx];
+            sumG += data[idx + 1];
+            sumB += data[idx + 2];
+            count += 1;
+        }
+    }
+    if (!count) return { r: 0, g: 0, b: 0 };
+    return {
+        r: Math.round(sumR / count),
+        g: Math.round(sumG / count),
+        b: Math.round(sumB / count),
+    };
+}
+
+function classifyColor(rgb) {
+    const [h, s, v] = rgbToHsv(rgb);
+    if (s < SAT_MIN || v < VAL_MIN) return null;
+    return Object.keys(COLORS).find(key => hsvInRange(h, s, v, COLORS[key].hsvLow, COLORS[key].hsvHigh)) || null;
+}
+
+function rgbToHsv({ r, g, b }) {
+    const rn = r / 255;
+    const gn = g / 255;
+    const bn = b / 255;
+    const max = Math.max(rn, gn, bn);
+    const min = Math.min(rn, gn, bn);
+    const delta = max - min;
+    let h = 0;
+    if (delta !== 0) {
+        if (max === rn) h = ((gn - bn) / delta) % 6;
+        else if (max === gn) h = (bn - rn) / delta + 2;
+        else h = (rn - gn) / delta + 4;
+        h *= 60;
+        if (h < 0) h += 360;
+    }
+    const s = max === 0 ? 0 : delta / max;
+    const v = max;
+    return [Math.round(h / 2), Math.round(s * 255), Math.round(v * 255)];
+}
+
+function hsvInRange(h, s, v, low, high) {
+    const [h1, s1, v1] = low;
+    const [h2, s2, v2] = high;
+    const satOk = s >= s1 && s <= s2;
+    const valOk = v >= v1 && v <= v2;
+    if (!satOk || !valOk) return false;
+    if (h1 <= h2) return h >= h1 && h <= h2;
+    return h >= h1 || h <= h2;
+}
+
+function buildTriangleCenters(pins) {
+    const edges = new Set();
+    const byId = pins.map((p, idx) => ({ ...p, idx }));
+    for (let i = 0; i < byId.length; i += 1) {
+        for (let j = i + 1; j < byId.length; j += 1) {
+            const dx = byId[i].x - byId[j].x;
+            const dy = byId[i].y - byId[j].y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (Math.abs(dist - 43.3) <= 1.2) {
+                edges.add(`${i}-${j}`);
             }
         }
-        if (total > 0) {
-            const ratio = hits / total;
-            if (ratio > bestRatio) {
-                bestRatio = ratio;
-                bestKey = key;
+    }
+
+    const centers = [];
+    for (let i = 0; i < byId.length; i += 1) {
+        for (let j = i + 1; j < byId.length; j += 1) {
+            if (!edges.has(`${i}-${j}`)) continue;
+            for (let k = j + 1; k < byId.length; k += 1) {
+                if (!edges.has(`${i}-${k}`) || !edges.has(`${j}-${k}`)) continue;
+                const cx = (byId[i].x + byId[j].x + byId[k].x) / 3;
+                const cy = (byId[i].y + byId[j].y + byId[k].y) / 3;
+                centers.push({ x: cx, y: cy });
             }
         }
-    });
-    return bestRatio >= 0.25 ? bestKey : null;
+    }
+    return centers;
 }
 
 function showResults() {
@@ -530,7 +444,9 @@ function showResults() {
 
     if (winner.score > 0) {
         el.winnerMsg.textContent = `🏆 ${winner.name} gewinnt!`;
-        confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
+        if (typeof confetti === 'function') {
+            confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
+        }
     } else {
         el.winnerMsg.textContent = 'Keine Steine erkannt';
     }
@@ -561,7 +477,6 @@ function showResults() {
 function retryScan() {
     el.controlsSheet?.classList.add('hidden');
     resetGameUI();
-    startAutoScan();
 }
 
 function clearHistory() {
@@ -646,6 +561,7 @@ function checkInstallPrompt() {
 }
 
 function registerServiceWorker() {
+    if (location.protocol !== 'http:' && location.protocol !== 'https:') return;
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('./sw.js').catch(err => console.warn('SW failed', err));
     }

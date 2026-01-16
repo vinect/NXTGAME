@@ -9,6 +9,7 @@
     --glass-border: 1px solid rgba(0, 155, 158, 0.2);
     --glass-shadow: 0 12px 30px rgba(0, 0, 0, 0.12);
     --header-height: 60px;
+    --hex-mask: url("data:image/svg+xml;utf8,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='-150%20-150%20300%20300'%3E%3Cpolygon%20fill='white'%20points='0,-140%20121.24,-70%20121.24,70%200,140%20-121.24,70%20-121.24,-70'/%3E%3C/svg%3E");
 
     --col-magenta: #E91E63;
     --col-yellow: #FFD600;
@@ -221,6 +222,11 @@ button, .lobby-card, .scan-btn, .icon-btn, .primary-btn {
     color: var(--nxt-teal); font-weight: 700; padding: 12px;
     border-radius: 12px; width: 100%; margin-bottom: 10px;
 }
+.ghost-btn {
+    background: rgba(255, 255, 255, 0.7);
+    border-color: rgba(0, 155, 158, 0.35);
+    font-size: 0.95rem;
+}
 
 .random-result {
     margin-top: 10px; text-align: center;
@@ -252,6 +258,15 @@ button, .lobby-card, .scan-btn, .icon-btn, .primary-btn {
     position: absolute;
     inset: 0;
     overflow: hidden;
+    background: #000;
+    -webkit-mask-image: var(--hex-mask);
+    mask-image: var(--hex-mask);
+    -webkit-mask-size: 100% 100%;
+    mask-size: 100% 100%;
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+    mask-position: center;
 }
 #video, #canvas {
     position: absolute;

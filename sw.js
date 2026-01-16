@@ -1,4 +1,4 @@
-const CACHE_NAME = 'nxt-game-v21';
+const CACHE_NAME = 'nxt-game-v22';
 const STATIC_ASSETS = [
   './',
   './index.html',
@@ -29,6 +29,8 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
+  const url = new URL(event.request.url);
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return;
   event.respondWith(
     caches.match(event.request).then((cached) => {
       if (cached) return cached;
