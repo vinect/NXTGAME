@@ -241,28 +241,28 @@ function renderPlayers() {
 
 window.updatePlayerName = (elm) => { players[elm.dataset.idx].name = elm.value; };
 window.setPlayerColor = (idx, key) => {
-    players[idx].colorKey = key;
-    enforceUniqueColors(idx);
+    if (players[idx].colorKey === key) return;
+    const otherIdx = players.findIndex((p, i) => i !== idx && p.colorKey === key);
+    if (otherIdx >= 0) {
+        const prev = players[idx].colorKey;
+        players[idx].colorKey = key;
+        players[otherIdx].colorKey = prev;
+    } else {
+        players[idx].colorKey = key;
+    }
     renderPlayers();
 };
 
-function enforceUniqueColors(changedIdx = -1) {
+function enforceUniqueColors() {
     const used = new Set();
     const available = Object.keys(COLORS);
-    const indices = players.map((_, i) => i);
-    if (changedIdx >= 0) {
-        indices.splice(indices.indexOf(changedIdx), 1);
-        indices.unshift(changedIdx);
-    }
-
-    indices.forEach(idx => {
-        const current = players[idx].colorKey;
-        if (!used.has(current)) {
-            used.add(current);
+    players.forEach((player) => {
+        if (!used.has(player.colorKey)) {
+            used.add(player.colorKey);
             return;
         }
-        const nextColor = available.find(color => !used.has(color)) || current;
-        players[idx].colorKey = nextColor;
+        const nextColor = available.find(color => !used.has(color)) || player.colorKey;
+        player.colorKey = nextColor;
         used.add(nextColor);
     });
 }
