@@ -3,7 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    
     <title>NXTgame</title>
+    
     <meta name="apple-mobile-web-app-title" content="NXTgame">
     <link rel="manifest" href="manifest.json">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -12,7 +14,7 @@
     <link rel="apple-touch-icon" href="icon.png">
     
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Source+Sans+Pro:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Source+Sans+Pro:wght@300;400;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     
     <script async src="https://docs.opencv.org/4.8.0/opencv.js" onload="onOpenCvReady();" type="text/javascript"></script>
@@ -24,8 +26,12 @@
         <a href="https://www.nxt.reutlingen-university.de/" target="_blank" class="brand-link">
             <img src="NXT Titel.png" alt="NXT" class="brand-logo">
         </a>
-        <button id="menu-btn" class="icon-btn">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+        <button id="menu-btn" class="icon-btn" aria-label="Menü öffnen">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="3" y1="12" x2="21" y2="12"></line>
+                <line x1="3" y1="6" x2="21" y2="6"></line>
+                <line x1="3" y1="18" x2="21" y2="18"></line>
+            </svg>
         </button>
     </header>
 
@@ -38,36 +44,53 @@
             <button class="menu-item" data-target="view-instructions">Anleitung</button>
             <button class="menu-item" data-target="view-history">Verlauf</button>
             <button class="menu-item" data-target="view-insights">Insights</button>
-            <div class="menu-footer">NXT Reutlingen v16.0</div>
+            <div class="menu-footer">NXT Reutlingen v17.1</div>
         </div>
     </nav>
+
+    <button id="fab-home" class="fab-btn hidden" aria-label="Zur Startseite">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+            <polyline points="9 22 9 12 15 12 15 22"></polyline>
+        </svg>
+    </button>
 
     <section id="view-setup" class="view active-view">
         <div class="center-content">
             <div class="glass-card lobby-card">
                 <h2>NEUES SPIEL</h2>
+                
                 <div class="lobby-header">
                     <span class="subtitle">Spieler & Farben</span>
                     <div class="player-controls">
-                        <button id="remove-player-btn" class="ctrl-btn" disabled>−</button>
+                        <button id="remove-player-btn" class="ctrl-btn" disabled aria-label="Spieler entfernen">−</button>
                         <span id="player-count-display">2</span>
-                        <button id="add-player-btn" class="ctrl-btn">+</button>
+                        <button id="add-player-btn" class="ctrl-btn" aria-label="Spieler hinzufügen">+</button>
                     </div>
                 </div>
                 
-                <div id="players-container" class="players-list"></div>
+                <div id="players-container" class="players-list">
+                    </div>
 
                 <div class="random-starter-section">
                     <button id="random-start-btn" class="secondary-btn">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect><path d="M16 8h.01"></path><path d="M8 8h.01"></path><path d="M8 16h.01"></path><path d="M16 16h.01"></path><path d="M12 12h.01"></path></svg>
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect>
+                            <path d="M16 8h.01"></path><path d="M8 8h.01"></path>
+                            <path d="M8 16h.01"></path><path d="M16 16h.01"></path>
+                            <path d="M12 12h.01"></path>
+                        </svg>
                         Wer fängt an?
                     </button>
                     <div id="random-result" class="random-result hidden"></div>
                 </div>
 
                 <button id="start-game-btn" class="primary-btn big-btn">
-                    STARTEN
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+                    SPIEL STARTEN
+                    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                        <polyline points="12 5 19 12 12 19"></polyline>
+                    </svg>
                 </button>
             </div>
         </div>
@@ -89,7 +112,8 @@
                 <div id="lock-overlay" class="lock-overlay hidden"></div>
                 <div id="scan-line" class="scan-overlay hidden"></div>
             </div>
-            <div id="instruction-text" class="instruction-badge">Suche 37 Pins...</div>
+            
+            <div id="instruction-text" class="instruction-badge">Suche Spielfeld...</div>
         </div>
 
         <div id="controls-sheet" class="glass-sheet hidden">
@@ -99,7 +123,8 @@
                     <div id="status-pill" class="status-saved">Gespeichert ✅</div>
                 </div>
                 
-                <div id="score-list" class="ranking-list"></div>
+                <div id="score-list" class="ranking-list">
+                    </div>
                 
                 <div class="button-group">
                     <button id="next-game-btn" class="primary-btn action-main-btn">NEUES SPIEL</button>
@@ -113,10 +138,13 @@
         <div class="center-content">
             <div class="glass-card lobby-card">
                 <h2>APP TEILEN</h2>
+                <p class="subtitle">Scannen zum Mitspielen</p>
                 <div class="qr-display-wrapper">
-                    <img src="qrcode.png" alt="QR Code" class="static-qr">
+                    <img src="qrcode.png" alt="QR Code" class="static-qr" onerror="this.style.display='none'; this.parentElement.innerHTML='Bild fehlt'">
                 </div>
-                <p style="margin-top:20px; font-size:0.9rem; color:#666;">Scanne diesen Code, um die App direkt zu öffnen.</p>
+                <p style="margin-top:20px; font-size:0.9rem; color:#666;">
+                    Scanne diesen Code, um die App direkt auf deinem Handy zu öffnen.
+                </p>
             </div>
         </div>
     </section>
@@ -126,8 +154,12 @@
             <h2>ANLEITUNG</h2>
             <div class="glass-card">
                 <h3>Das Ziel</h3>
-                <p>Wer hat die meisten Figuren auf dem Feld?</p>
-                <p style="margin-top:5px; color:#666; font-size:0.9rem;">Die App zählt automatisch deine Figuren und ignoriert die Gummibänder.</p>
+                <p>Die App zählt automatisch die Figuren auf dem Brett. Gummibänder werden dabei ignoriert.</p>
+            </div>
+            <div class="glass-card">
+                <h3>Scan-Vorgang</h3>
+                <p>Halte das Smartphone ruhig über das Brett. Versuche, das gesamte Sechseck im Rahmen zu haben.</p>
+                <p style="margin-top:10px; font-size:0.9rem; color:#888;">Der Rahmen leuchtet grün, wenn das Brett erkannt wurde.</p>
             </div>
             <div class="glass-card">
                 <h3>Farben</h3>
@@ -157,8 +189,15 @@
         <div class="content-padding">
             <h2>INSIGHTS</h2>
             <div class="glass-card highlight-card">
+                <h3>Technologie</h3>
+                <p>Computer Vision (OpenCV.js) mit morphologischen Operationen zur Unterscheidung von Figuren und Gummibändern.</p>
+            </div>
+            <div class="glass-card">
                 <h3>Fakultät NXT</h3>
-                <a href="https://www.nxt.reutlingen-university.de/" target="_blank" class="link-btn">Zur Website →</a>
+                <a href="https://www.nxt.reutlingen-university.de/" target="_blank" class="link-btn">
+                    Zur Website
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" style="margin-left:5px"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3"/></svg>
+                </a>
             </div>
         </div>
     </section>
