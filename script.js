@@ -44,15 +44,6 @@ const el = {};
 const sampleCanvas = document.createElement('canvas');
 const sampleCtx = sampleCanvas.getContext('2d', { willReadFrequently: true });
 
-const hexPoints = [
-    [0.25, 0.0],
-    [0.75, 0.0],
-    [1.0, 0.5],
-    [0.75, 1.0],
-    [0.25, 1.0],
-    [0.0, 0.5],
-];
-const axisAngles = [0, Math.PI / 3, -Math.PI / 3];
 const sampleInterval = 160;
 
 function onOpenCvReady() {
@@ -332,142 +323,6 @@ function setScanReady(ready, message) {
 // ============================================
 // 5. HEX-GRID LAYOUT (PRINZIP)
 // ============================================
-function getLineCount() {
-    const lines = Number.parseInt(el.hexShell?.dataset.lines, 10);
-    if (Number.isFinite(lines) && lines > 0) return lines;
-    return 5;
-}
-
-function getHexPolygon(width, height) {
-    return hexPoints.map(([x, y]) => ({ x: x * width, y: y * height }));
-}
-
-function clipHex(ctx, width, height) {
-    ctx.beginPath();
-    hexPoints.forEach(([x, y], index) => {
-        const px = x * width;
-        const py = y * height;
-        if (index === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
-    });
-    ctx.closePath();
-    ctx.clip();
-}
-
-function drawPolygonPath(ctx, points) {
-    ctx.beginPath();
-    points.forEach((point, index) => {
-        if (index === 0) ctx.moveTo(point.x, point.y); else ctx.lineTo(point.x, point.y);
-    });
-    ctx.closePath();
-}
-
-function clipPolygon(points, cx, cy, nx, ny, d, keepGreater) {
-    if (points.length === 0) return [];
-    const output = [];
-    for (let i = 0; i < points.length; i += 1) {
-        const current = points[i];
-        const next = points[(i + 1) % points.length];
-        const currentDot = (current.x - cx) * nx + (current.y - cy) * ny;
-        const nextDot = (next.x - cx) * nx + (next.y - cy) * ny;
-        const currentInside = keepGreater ? currentDot >= d : currentDot <= d;
-        const nextInside = keepGreater ? nextDot >= d : nextDot <= d;
-
-        if (currentInside && nextInside) {
-            output.push({ x: next.x, y: next.y });
-        } else if (currentInside && !nextInside) {
-            const denom = nextDot - currentDot;
-            if (Math.abs(denom) > 1e-6) {
-                const t = (d - currentDot) / denom;
-                output.push({
-                    x: current.x + (next.x - current.x) * t,
-                    y: current.y + (next.y - current.y) * t,
-                });
-            }
-        } else if (!currentInside && nextInside) {
-            const denom = nextDot - currentDot;
-            if (Math.abs(denom) > 1e-6) {
-                const t = (d - currentDot) / denom;
-                output.push({
-                    x: current.x + (next.x - current.x) * t,
-                    y: current.y + (next.y - current.y) * t,
-                });
-            }
-            output.push({ x: next.x, y: next.y });
-        }
-    }
-    return output;
-}
-
-function polygonArea(points) {
-    let area = 0;
-    for (let i = 0; i < points.length; i += 1) {
-        const current = points[i];
-        const next = points[(i + 1) % points.length];
-        area += current.x * next.y - next.x * current.y;
-    }
-    return area / 2;
-}
-
-function polygonCentroid(points, signedArea) {
-    const area = signedArea || polygonArea(points);
-    if (Math.abs(area) < 1e-6) {
-        const total = points.reduce(
-            (acc, point) => ({ x: acc.x + point.x, y: acc.y + point.y }),
-            { x: 0, y: 0 }
-        );
-        return { x: total.x / points.length, y: total.y / points.length };
-    }
-
-    let cx = 0;
-    let cy = 0;
-    for (let i = 0; i < points.length; i += 1) {
-        const current = points[i];
-        const next = points[(i + 1) % points.length];
-        const factor = current.x * next.y - next.x * current.y;
-        cx += (current.x + next.x) * factor;
-        cy += (current.y + next.y) * factor;
-    }
-    const scale = 1 / (6 * area);
-    return { x: cx * scale, y: cy * scale };
-}
-
-function buildCells(hexPolygon, axes, width, height, lineCount) {
-    const cx = width / 2;
-    const cy = height / 2;
-    const bandCount = Math.max(1, lineCount - 1);
-    const cells = [];
-
-    for (let a = 0; a < bandCount; a += 1) {
-        for (let b = 0; b < bandCount; b += 1) {
-            for (let c = 0; c < bandCount; c += 1) {
-                let polygon = hexPolygon.map(point => ({ ...point }));
-                const bandIndices = [a, b, c];
-
-                axes.forEach((axis, axisIndex) => {
-                    const d0 = axis.offsets[bandIndices[axisIndex]];
-                    const d1 = axis.offsets[bandIndices[axisIndex] + 1];
-                    const minD = Math.min(d0, d1);
-                    const maxD = Math.max(d0, d1);
-                    polygon = clipPolygon(polygon, cx, cy, axis.nx, axis.ny, minD, true);
-                    polygon = clipPolygon(polygon, cx, cy, axis.nx, axis.ny, maxD, false);
-                });
-
-                if (polygon.length < 3) continue;
-                const signedArea = polygonArea(polygon);
-                const area = Math.abs(signedArea);
-                if (area < 1) continue;
-
-                cells.push({
-                    polygon,
-                    centroid: polygonCentroid(polygon, signedArea),
-                    area,
-                });
-            }
-        }
-    }
-    return cells;
-}
-
 function buildLayout() {
     if (!el.gridCanvas || !el.hexShell) return;
     const ctx = el.gridCanvas.getContext('2d');
@@ -478,26 +333,15 @@ function buildLayout() {
     el.gridCanvas.height = Math.round(rect.height * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    const lineCount = getLineCount();
-    const apothem = rect.height / 2;
-    const spacing = lineCount > 1 ? apothem / ((lineCount - 1) / 2) : apothem;
-    const offsets = Array.from({ length: lineCount }, (_, index) => {
-        return (index - (lineCount - 1) / 2) * spacing;
-    });
+    const size = Math.min(rect.width, rect.height);
+    const scale = size / 300;
+    const centerX = rect.width / 2;
+    const centerY = rect.height / 2;
 
-    const axes = axisAngles.map(angle => {
-        return {
-            angle,
-            dx: Math.cos(angle),
-            dy: Math.sin(angle),
-            nx: Math.cos(angle + Math.PI / 2),
-            ny: Math.sin(angle + Math.PI / 2),
-            offsets,
-        };
-    });
-
-    const hexPolygon = getHexPolygon(rect.width, rect.height);
-    const cells = buildCells(hexPolygon, axes, rect.width, rect.height, lineCount);
+    const pinPoints = PIN_GRID.map(pin => ({
+        x: centerX + pin.x * scale,
+        y: centerY + pin.y * scale,
+    }));
 
     const maxSampleSize = 340;
     const minSampleSize = 160;
@@ -510,25 +354,16 @@ function buildLayout() {
     const scaleX = sampleWidth / rect.width;
     const scaleY = sampleHeight / rect.height;
 
-    const samplePoints = cells.map(cell => ({
-        x: cell.centroid.x * scaleX,
-        y: cell.centroid.y * scaleY,
+    const samplePoints = pinPoints.map(point => ({
+        x: point.x * scaleX,
+        y: point.y * scaleY,
     }));
-
-    const totalArea = cells.reduce((sum, cell) => sum + cell.area, 0);
-    const avgArea = cells.length ? totalArea / cells.length : 0;
-    const fontSize = Math.max(8, Math.round(Math.sqrt(avgArea) * 0.28));
 
     layout = {
         rect,
         ctx,
-        lineCount,
-        spacing,
-        axes,
-        hexPolygon,
-        cells,
+        pinPoints,
         samplePoints,
-        fontSize,
     };
 }
 
@@ -583,10 +418,8 @@ function renderFrame(timestamp) {
     if (now - lastSampleTime < sampleInterval) return;
     lastSampleTime = now;
 
-    const { ctx, rect, cells, samplePoints, fontSize } = layout;
+    const { ctx, rect, samplePoints } = layout;
     ctx.clearRect(0, 0, rect.width, rect.height);
-    ctx.save();
-    clipHex(ctx, rect.width, rect.height);
 
     let averages = [];
     if (el.video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
@@ -596,29 +429,6 @@ function renderFrame(timestamp) {
         averages = samplePoints.map(point => samplePointColor(point, frame.data, sampleCanvas.width, sampleCanvas.height, jitter));
         lastAverages = averages;
     }
-
-    const overlayEnabled = el.pixelToggle ? el.pixelToggle.checked : false;
-    if (overlayEnabled) {
-        cells.forEach((cell, index) => {
-            const color = averages[index] || { r: 0, g: 0, b: 0 };
-            ctx.fillStyle = rgbToHex(color);
-            drawPolygonPath(ctx, cell.polygon);
-            ctx.fill();
-        });
-
-        ctx.font = `${fontSize}px "Source Sans Pro", "Segoe UI", sans-serif`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.shadowColor = 'rgba(0, 0, 0, 0.45)';
-        ctx.shadowBlur = Math.max(3, fontSize * 0.5);
-        cells.forEach((cell, index) => {
-            const color = averages[index] || { r: 0, g: 0, b: 0 };
-            ctx.fillStyle = '#ffffff';
-            ctx.fillText(rgbToHex(color), cell.centroid.x, cell.centroid.y);
-        });
-    }
-
-    ctx.restore();
 }
 
 function sampleColors() {

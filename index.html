@@ -86,13 +86,7 @@
                     <canvas id="canvas"></canvas>
                 </div>
                 <svg class="hex-grid-overlay" viewBox="-150 -150 300 300" preserveAspectRatio="xMidYMid meet">
-                    <defs>
-                        <mask id="hex-mask" maskUnits="userSpaceOnUse">
-                            <rect x="-150" y="-150" width="300" height="300" fill="white"></rect>
-                            <polygon class="hex-mask" points="0,-140 121.24,-70 121.24,70 0,140 -121.24,70 -121.24,-70" fill="black"></polygon>
-                        </mask>
-                    </defs>
-                    <rect class="hex-dim" x="-200" y="-200" width="400" height="400" mask="url(#hex-mask)"></rect>
+                    <path class="hex-dim" fill-rule="evenodd" d="M-150,-150 H150 V150 H-150 Z M0,-140 L121.24,-70 L121.24,70 L0,140 L-121.24,70 L-121.24,-70 Z"></path>
                     <polygon class="hex-outline" points="0,-140 121.24,-70 121.24,70 0,140 -121.24,70 -121.24,-70"></polygon>
                     <g id="grid-lines"></g>
                     <g id="pin-template-group"></g>
