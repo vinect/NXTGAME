@@ -9,11 +9,12 @@
     <meta name="theme-color" content="#009B9E">
     <link rel="apple-touch-icon" href="icon.png">
     <link rel="manifest" href="manifest.json">
-    
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Source+Sans+Pro:wght@400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
-    
+
     <script async src="https://docs.opencv.org/4.8.0/opencv.js" onload="onOpenCvReady();" type="text/javascript"></script>
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 </head>
@@ -49,7 +50,7 @@
             <button class="menu-item" data-target="view-instructions">Anleitung</button>
             <button class="menu-item" data-target="view-history">Verlauf</button>
             <button class="menu-item" data-target="view-insights">Insights</button>
-            <div class="menu-footer">NXT v20.0</div>
+            <div class="menu-footer">NXT v21.0</div>
         </div>
     </nav>
 
@@ -61,7 +62,7 @@
                 <div class="lobby-header">
                     <span>SPIELER</span>
                     <div class="player-controls">
-                        <button id="remove-player-btn" class="ctrl-btn">−</button>
+                        <button id="remove-player-btn" class="ctrl-btn">-</button>
                         <span id="player-count-display">2</span>
                         <button id="add-player-btn" class="ctrl-btn">+</button>
                     </div>
@@ -85,14 +86,20 @@
                     <canvas id="canvas"></canvas>
                 </div>
                 <svg class="hex-grid-overlay" viewBox="-150 -150 300 300" preserveAspectRatio="xMidYMid meet">
-                    <!-- Hexagon Umriss -->
-                    <polygon class="hex-outline" points="0,-140 121.24,-70 121.24,70 0,140 -121.24,70 -121.24,-70" />
-                    <!-- Pin-Positionen werden per JS gefüllt -->
+                    <defs>
+                        <mask id="hex-mask" maskUnits="userSpaceOnUse">
+                            <rect x="-150" y="-150" width="300" height="300" fill="white"></rect>
+                            <polygon class="hex-mask" points="0,-140 121.24,-70 121.24,70 0,140 -121.24,70 -121.24,-70" fill="black"></polygon>
+                        </mask>
+                    </defs>
+                    <rect class="hex-dim" x="-200" y="-200" width="400" height="400" mask="url(#hex-mask)"></rect>
+                    <polygon class="hex-outline" points="0,-140 121.24,-70 121.24,70 0,140 -121.24,70 -121.24,-70"></polygon>
+                    <g id="grid-lines"></g>
                     <g id="pin-template-group"></g>
                 </svg>
                 <canvas id="overlay-canvas"></canvas>
             </div>
-            
+
             <div class="scan-controls">
                 <div id="instruction-text" class="status-text">OpenCV lädt...</div>
                 <button id="trigger-scan-btn" class="scan-btn" disabled>
@@ -181,6 +188,14 @@
                 <h3>Fakultät NXT</h3>
                 <p>Nachhaltigkeit und Technologie an der Hochschule Reutlingen</p>
                 <a href="https://www.nxt.reutlingen-university.de/" target="_blank" rel="noopener" class="link-btn">Zur Website →</a>
+            </div>
+            <div class="glass-card interest-card">
+                <h3>Studieninteresse</h3>
+                <p>Hinterlasse deine E-Mail, wenn du Infos zum Studium an der NXT Reutlingen möchtest.</p>
+                <label class="field-label" for="interest-email">E-Mail</label>
+                <input id="interest-email" class="text-input" type="email" inputmode="email" placeholder="name@beispiel.de" autocomplete="email">
+                <button class="primary-btn inline-btn" type="button">Interesse senden</button>
+                <p class="field-hint">Keine Weitergabe an Dritte. Nur für Studieninfos.</p>
             </div>
             <div id="stats-card" class="glass-card">
                 <h3>Statistiken</h3>

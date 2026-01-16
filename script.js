@@ -1,10 +1,11 @@
-document.addEventListener("DOMContentLoaded", () => {
-    console.log("NXTgame v18.4 Grid-Logic gestartet");
-    initGame();
-});
+/**
+ * NXT Game Scanner v21.2
+ * Hex-Grid Sampling (centroid only)
+ */
 
-// --- 1. DAS GRID (Aus deiner CSV) ---
-// X/Y in mm, relativ zur Mitte.
+// ============================================
+// 1. KONFIGURATION
+// ============================================
 const PIN_GRID = [
     { id: 1, x: -112.5, y: -64.95 }, { id: 2, x: -112.5, y: -21.65 }, { id: 3, x: -112.5, y: 21.65 }, { id: 4, x: -112.5, y: 64.95 },
     { id: 5, x: -75.0, y: -86.60 }, { id: 6, x: -75.0, y: -43.30 }, { id: 7, x: -75.0, y: 0.00 }, { id: 8, x: -75.0, y: 43.30 }, { id: 9, x: -75.0, y: 86.60 },
@@ -14,339 +15,812 @@ const PIN_GRID = [
     { id: 29, x: 75.0, y: -86.60 }, { id: 30, x: 75.0, y: -43.30 }, { id: 31, x: 75.0, y: 0.00 }, { id: 32, x: 75.0, y: 43.30 }, { id: 33, x: 75.0, y: 86.60 },
     { id: 34, x: 112.5, y: -64.95 }, { id: 35, x: 112.5, y: -21.65 }, { id: 36, x: 112.5, y: 21.65 }, { id: 37, x: 112.5, y: 64.95 }
 ];
-// Radius (Mitte zu Ecke) in mm
-const BOARD_RADIUS_MM = 140; 
 
-// --- CONFIG ---
-const MAX_PLAYERS = 4;
-const MIN_PLAYERS = 2;
+const GRID_STEP_MM = 43.3;
+const GRID_STEP_TOL = 1.2;
 
 const COLORS = {
-    magenta: { name: 'Magenta', hex: '#D500F9', hsvLow: [135, 50, 50, 0], hsvHigh: [175, 255, 255, 255] },
-    yellow:  { name: 'Gelb',    hex: '#FFD600', hsvLow: [15, 80, 80, 0],  hsvHigh: [40, 255, 255, 255] },
-    blue:    { name: 'Blau',    hex: '#2962FF', hsvLow: [95, 80, 50, 0],  hsvHigh: [130, 255, 255, 255] },
-    green:   { name: 'Grün',    hex: '#00C853', hsvLow: [40, 50, 50, 0],  hsvHigh: [90, 255, 255, 255] }
+    magenta: { name: 'Magenta', hex: '#E91E63', hsvLow: [135, 60, 60], hsvHigh: [175, 255, 255] },
+    yellow:  { name: 'Gelb',    hex: '#FFEB3B', hsvLow: [15, 80, 80],  hsvHigh: [40, 255, 255] },
+    blue:    { name: 'Blau',    hex: '#2196F3', hsvLow: [95, 80, 60],  hsvHigh: [130, 255, 255] },
+    green:   { name: 'Grün',    hex: '#4CAF50', hsvLow: [40, 60, 50],  hsvHigh: [85, 255, 255] }
 };
 
-let players = [{name:'Spieler 1', colorKey:'magenta', score:0}, {name:'Spieler 2', colorKey:'yellow', score:0}];
-let cvReady = false;
-let streamObject = null;
-let isScanning = false;
-let scanInterval = null;
-let stabilityCounter = 0;
-let detectedBoard = null;
+const HISTORY_KEY = 'nxt_games_v21';
 
-// Elemente-Cache
-let elements = {};
+let players = [
+    { name: 'Spieler 1', colorKey: 'magenta', score: 0 },
+    { name: 'Spieler 2', colorKey: 'yellow', score: 0 }
+];
 
-function onOpenCvReady() { console.log("OpenCV Ready"); cvReady = true; }
+let stream = null;
+let isRendering = false;
+let layout = null;
+let lastSampleTime = 0;
+let lastAverages = [];
 
-function initGame() {
-    // Elemente sicher abrufen
-    elements = {
-        video: document.getElementById('video'),
-        canvas: document.getElementById('canvas'),
-        overlayCanvas: document.getElementById('overlay-canvas'),
-        playersContainer: document.getElementById('players-container'),
-        playerCountDisplay: document.getElementById('player-count-display'),
-        addPlayerBtn: document.getElementById('add-player-btn'),
-        removePlayerBtn: document.getElementById('remove-player-btn'),
-        startBtn: document.getElementById('start-game-btn'),
-        instructionText: document.getElementById('instruction-text'),
-        scanLine: document.getElementById('scan-line'),
-        lockOverlay: document.getElementById('lock-overlay'),
-        controlsSheet: document.getElementById('controls-sheet'),
-        scoreList: document.getElementById('score-list'),
-        winnerMsg: document.getElementById('winner-msg'),
-        nextGameBtn: document.getElementById('next-game-btn'),
-        retryBtn: document.getElementById('retry-btn'),
-        fabHome: document.getElementById('fab-home'),
-        randomStartBtn: document.getElementById('random-start-btn'),
-        randomResultDisplay: document.getElementById('random-result'),
-        installModal: document.getElementById('install-modal'),
-        installInstructions: document.getElementById('install-instructions'),
-        installDismissBtn: document.getElementById('install-dismiss-btn'),
-        closeInstallBtn: document.getElementById('close-install'),
-        menuBtn: document.getElementById('menu-btn'),
-        sideMenu: document.getElementById('side-menu'),
-        menuOverlay: document.getElementById('side-menu-overlay')
-    };
+const el = {};
 
+const sampleCanvas = document.createElement('canvas');
+const sampleCtx = sampleCanvas.getContext('2d', { willReadFrequently: true });
+
+const hexPoints = [
+    [0.25, 0.0],
+    [0.75, 0.0],
+    [1.0, 0.5],
+    [0.75, 1.0],
+    [0.25, 1.0],
+    [0.0, 0.5],
+];
+const axisAngles = [0, Math.PI / 3, -Math.PI / 3];
+const sampleInterval = 160;
+
+function onOpenCvReady() {
+    // OpenCV wird nicht benötigt, aber der Callback existiert fürs Script-Tag.
+}
+
+// ============================================
+// 2. INITIALISIERUNG
+// ============================================
+document.addEventListener('DOMContentLoaded', () => {
+    initElements();
+    initSvgGrid();
+    initEventListeners();
+    enforceUniqueColors();
     renderPlayers();
-    checkInstallState();
-    
-    // UI Event Listeners
-    if(elements.menuBtn) elements.menuBtn.onclick = () => { elements.sideMenu.classList.toggle('open'); elements.menuOverlay.classList.toggle('open'); };
-    if(elements.menuOverlay) elements.menuOverlay.onclick = () => { elements.sideMenu.classList.remove('open'); elements.menuOverlay.classList.remove('open'); };
-    
+    renderHistory();
+    checkInstallPrompt();
+    registerServiceWorker();
+    initLayoutObservers();
+});
+
+function initElements() {
+    el.video = document.getElementById('video');
+    el.canvas = document.getElementById('canvas');
+    el.gridCanvas = document.getElementById('overlay-canvas');
+    el.instructionText = document.getElementById('instruction-text');
+    el.gridOverlay = document.querySelector('.hex-grid-overlay');
+    el.hexShell = document.querySelector('.hexagon-frame');
+    el.pixelToggle = document.getElementById('pixelToggle');
+    el.gridLines = document.getElementById('grid-lines');
+    el.pinGroup = document.getElementById('pin-template-group');
+
+    el.scanBtn = document.getElementById('trigger-scan-btn');
+    el.homeBtn = document.getElementById('home-btn');
+    el.scoreList = document.getElementById('score-list');
+    el.controlsSheet = document.getElementById('controls-sheet');
+    el.winnerMsg = document.getElementById('winner-msg');
+
+    el.playersContainer = document.getElementById('players-container');
+    el.playerCountDisplay = document.getElementById('player-count-display');
+
+    el.sideMenu = document.getElementById('side-menu');
+    el.menuOverlay = document.getElementById('side-menu-overlay');
+    el.randomResult = document.getElementById('random-result');
+    el.installModal = document.getElementById('install-modal');
+}
+
+function initSvgGrid() {
+    if (!el.gridOverlay || !el.pinGroup || !el.gridLines) return;
+    el.pinGroup.innerHTML = '';
+    el.gridLines.innerHTML = '';
+
+    const connections = buildGridConnections(PIN_GRID);
+    connections.forEach(([a, b]) => {
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('x1', a.x);
+        line.setAttribute('y1', a.y);
+        line.setAttribute('x2', b.x);
+        line.setAttribute('y2', b.y);
+        line.classList.add('grid-line');
+        el.gridLines.appendChild(line);
+    });
+
+    PIN_GRID.forEach(pin => {
+        const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        circle.setAttribute('r', '4.5');
+        circle.setAttribute('cx', pin.x);
+        circle.setAttribute('cy', pin.y);
+        circle.classList.add('pin-marker');
+        circle.id = `pin-${pin.id}`;
+        el.pinGroup.appendChild(circle);
+    });
+}
+
+function buildGridConnections(pins) {
+    const edges = [];
+    for (let i = 0; i < pins.length; i += 1) {
+        for (let j = i + 1; j < pins.length; j += 1) {
+            const dx = pins[i].x - pins[j].x;
+            const dy = pins[i].y - pins[j].y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (Math.abs(dist - GRID_STEP_MM) <= GRID_STEP_TOL) {
+                edges.push([pins[i], pins[j]]);
+            }
+        }
+    }
+    return edges;
+}
+
+function initEventListeners() {
+    document.getElementById('menu-btn')?.addEventListener('click', toggleMenu);
+    el.menuOverlay?.addEventListener('click', closeMenu);
     document.querySelectorAll('.menu-item').forEach(btn => {
-        btn.onclick = () => {
-            elements.sideMenu.classList.remove('open'); elements.menuOverlay.classList.remove('open');
+        btn.addEventListener('click', () => {
+            closeMenu();
             switchView(btn.dataset.target);
+        });
+    });
+
+    document.getElementById('start-game-btn')?.addEventListener('click', () => switchView('view-game'));
+    el.homeBtn?.addEventListener('click', () => switchView('view-setup'));
+    el.scanBtn?.addEventListener('click', triggerScan);
+    document.getElementById('next-game-btn')?.addEventListener('click', () => switchView('view-setup'));
+    document.getElementById('retry-btn')?.addEventListener('click', retryScan);
+
+    document.getElementById('add-player-btn')?.addEventListener('click', addPlayer);
+    document.getElementById('remove-player-btn')?.addEventListener('click', removePlayer);
+    document.getElementById('random-start-btn')?.addEventListener('click', pickRandomStarter);
+
+    document.getElementById('delete-btn')?.addEventListener('click', clearHistory);
+    document.getElementById('install-dismiss-btn')?.addEventListener('click', () => el.installModal?.classList.add('hidden'));
+    document.getElementById('close-install')?.addEventListener('click', () => el.installModal?.classList.add('hidden'));
+}
+
+function initLayoutObservers() {
+    if (!el.hexShell) return;
+    const resizeObserver = new ResizeObserver(() => {
+        buildLayout();
+    });
+    resizeObserver.observe(el.hexShell);
+    window.addEventListener('orientationchange', buildLayout);
+    window.addEventListener('resize', buildLayout);
+    buildLayout();
+}
+
+// ============================================
+// 3. NAVIGATION & SPIELER
+// ============================================
+function toggleMenu() {
+    el.sideMenu?.classList.toggle('open');
+    el.menuOverlay?.classList.toggle('open');
+}
+function closeMenu() {
+    el.sideMenu?.classList.remove('open');
+    el.menuOverlay?.classList.remove('open');
+}
+
+function switchView(viewId) {
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active-view'));
+    document.getElementById(viewId)?.classList.add('active-view');
+    if (el.homeBtn) {
+        if (viewId === 'view-setup') el.homeBtn.classList.add('hidden');
+        else el.homeBtn.classList.remove('hidden');
+    }
+    if (viewId === 'view-game') {
+        startCamera();
+        startRenderLoop();
+    } else {
+        stopCamera();
+        stopRenderLoop();
+    }
+}
+
+function addPlayer() {
+    if (players.length >= 4) return;
+    const colors = Object.keys(COLORS);
+    const used = players.map(p => p.colorKey);
+    const free = colors.find(c => !used.includes(c)) || 'blue';
+    players.push({ name: `Spieler ${players.length + 1}`, colorKey: free, score: 0 });
+    enforceUniqueColors();
+    renderPlayers();
+}
+function removePlayer() {
+    if (players.length > 2) {
+        players.pop();
+        renderPlayers();
+    }
+}
+
+function renderPlayers() {
+    if (!el.playersContainer) return;
+    el.playersContainer.innerHTML = players.map((p, idx) => `
+        <div class="player-card" style="border-left-color: ${COLORS[p.colorKey].hex}">
+            <div class="player-row">
+                <input class="player-input" type="text" value="${p.name}" data-idx="${idx}" onchange="updatePlayerName(this)">
+            </div>
+            <div class="color-picker">
+                ${Object.keys(COLORS).map(k => `
+                    <button class="color-dot ${p.colorKey === k ? 'active' : ''}" style="background: ${COLORS[k].hex}" onclick="setPlayerColor(${idx}, '${k}')"></button>
+                `).join('')}
+            </div>
+        </div>
+    `).join('');
+    el.playerCountDisplay.textContent = players.length;
+}
+
+window.updatePlayerName = (elm) => { players[elm.dataset.idx].name = elm.value; };
+window.setPlayerColor = (idx, key) => {
+    players[idx].colorKey = key;
+    enforceUniqueColors(idx);
+    renderPlayers();
+};
+
+function enforceUniqueColors(changedIdx = -1) {
+    const used = new Set();
+    const available = Object.keys(COLORS);
+    const indices = players.map((_, i) => i);
+    if (changedIdx >= 0) {
+        indices.splice(indices.indexOf(changedIdx), 1);
+        indices.unshift(changedIdx);
+    }
+
+    indices.forEach(idx => {
+        const current = players[idx].colorKey;
+        if (!used.has(current)) {
+            used.add(current);
+            return;
+        }
+        const nextColor = available.find(color => !used.has(color)) || current;
+        players[idx].colorKey = nextColor;
+        used.add(nextColor);
+    });
+}
+
+function pickRandomStarter() {
+    const r = players[Math.floor(Math.random() * players.length)];
+    el.randomResult.textContent = `${r.name} startet!`;
+    el.randomResult.classList.remove('hidden');
+}
+
+// ============================================
+// 4. KAMERA & RENDER LOOP
+// ============================================
+async function startCamera() {
+    try {
+        stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+            audio: false
+        });
+        el.video.srcObject = stream;
+        el.video.onloadedmetadata = () => {
+            el.video.play();
+            resetGameUI();
+            setScanReady(true, 'Bereit - drücke SCAN');
+        };
+    } catch (err) {
+        console.error(err);
+        setScanReady(false, 'Kamera Fehler');
+    }
+}
+
+function stopCamera() {
+    if (stream) {
+        stream.getTracks().forEach(t => t.stop());
+        stream = null;
+    }
+}
+
+function startRenderLoop() {
+    if (isRendering) return;
+    isRendering = true;
+    requestAnimationFrame(renderFrame);
+}
+
+function stopRenderLoop() {
+    isRendering = false;
+    if (el.gridCanvas) {
+        const ctx = el.gridCanvas.getContext('2d');
+        ctx?.clearRect(0, 0, el.gridCanvas.width, el.gridCanvas.height);
+    }
+}
+
+function resetGameUI() {
+    el.controlsSheet?.classList.add('hidden');
+    el.canvas.style.display = 'none';
+    el.video.style.display = 'block';
+    setScanReady(false, 'Starte Kamera...');
+}
+
+function setScanReady(ready, message) {
+    if (el.instructionText) el.instructionText.textContent = message || '';
+    if (el.scanBtn) el.scanBtn.disabled = !ready;
+    if (ready) el.scanBtn?.classList.add('active'); else el.scanBtn?.classList.remove('active');
+    if (ready) el.gridOverlay?.classList.add('ready'); else el.gridOverlay?.classList.remove('ready');
+}
+
+// ============================================
+// 5. HEX-GRID LAYOUT (PRINZIP)
+// ============================================
+function getLineCount() {
+    const lines = Number.parseInt(el.hexShell?.dataset.lines, 10);
+    if (Number.isFinite(lines) && lines > 0) return lines;
+    return 5;
+}
+
+function getHexPolygon(width, height) {
+    return hexPoints.map(([x, y]) => ({ x: x * width, y: y * height }));
+}
+
+function clipHex(ctx, width, height) {
+    ctx.beginPath();
+    hexPoints.forEach(([x, y], index) => {
+        const px = x * width;
+        const py = y * height;
+        if (index === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    });
+    ctx.closePath();
+    ctx.clip();
+}
+
+function drawPolygonPath(ctx, points) {
+    ctx.beginPath();
+    points.forEach((point, index) => {
+        if (index === 0) ctx.moveTo(point.x, point.y); else ctx.lineTo(point.x, point.y);
+    });
+    ctx.closePath();
+}
+
+function clipPolygon(points, cx, cy, nx, ny, d, keepGreater) {
+    if (points.length === 0) return [];
+    const output = [];
+    for (let i = 0; i < points.length; i += 1) {
+        const current = points[i];
+        const next = points[(i + 1) % points.length];
+        const currentDot = (current.x - cx) * nx + (current.y - cy) * ny;
+        const nextDot = (next.x - cx) * nx + (next.y - cy) * ny;
+        const currentInside = keepGreater ? currentDot >= d : currentDot <= d;
+        const nextInside = keepGreater ? nextDot >= d : nextDot <= d;
+
+        if (currentInside && nextInside) {
+            output.push({ x: next.x, y: next.y });
+        } else if (currentInside && !nextInside) {
+            const denom = nextDot - currentDot;
+            if (Math.abs(denom) > 1e-6) {
+                const t = (d - currentDot) / denom;
+                output.push({
+                    x: current.x + (next.x - current.x) * t,
+                    y: current.y + (next.y - current.y) * t,
+                });
+            }
+        } else if (!currentInside && nextInside) {
+            const denom = nextDot - currentDot;
+            if (Math.abs(denom) > 1e-6) {
+                const t = (d - currentDot) / denom;
+                output.push({
+                    x: current.x + (next.x - current.x) * t,
+                    y: current.y + (next.y - current.y) * t,
+                });
+            }
+            output.push({ x: next.x, y: next.y });
+        }
+    }
+    return output;
+}
+
+function polygonArea(points) {
+    let area = 0;
+    for (let i = 0; i < points.length; i += 1) {
+        const current = points[i];
+        const next = points[(i + 1) % points.length];
+        area += current.x * next.y - next.x * current.y;
+    }
+    return area / 2;
+}
+
+function polygonCentroid(points, signedArea) {
+    const area = signedArea || polygonArea(points);
+    if (Math.abs(area) < 1e-6) {
+        const total = points.reduce(
+            (acc, point) => ({ x: acc.x + point.x, y: acc.y + point.y }),
+            { x: 0, y: 0 }
+        );
+        return { x: total.x / points.length, y: total.y / points.length };
+    }
+
+    let cx = 0;
+    let cy = 0;
+    for (let i = 0; i < points.length; i += 1) {
+        const current = points[i];
+        const next = points[(i + 1) % points.length];
+        const factor = current.x * next.y - next.x * current.y;
+        cx += (current.x + next.x) * factor;
+        cy += (current.y + next.y) * factor;
+    }
+    const scale = 1 / (6 * area);
+    return { x: cx * scale, y: cy * scale };
+}
+
+function buildCells(hexPolygon, axes, width, height, lineCount) {
+    const cx = width / 2;
+    const cy = height / 2;
+    const bandCount = Math.max(1, lineCount - 1);
+    const cells = [];
+
+    for (let a = 0; a < bandCount; a += 1) {
+        for (let b = 0; b < bandCount; b += 1) {
+            for (let c = 0; c < bandCount; c += 1) {
+                let polygon = hexPolygon.map(point => ({ ...point }));
+                const bandIndices = [a, b, c];
+
+                axes.forEach((axis, axisIndex) => {
+                    const d0 = axis.offsets[bandIndices[axisIndex]];
+                    const d1 = axis.offsets[bandIndices[axisIndex] + 1];
+                    const minD = Math.min(d0, d1);
+                    const maxD = Math.max(d0, d1);
+                    polygon = clipPolygon(polygon, cx, cy, axis.nx, axis.ny, minD, true);
+                    polygon = clipPolygon(polygon, cx, cy, axis.nx, axis.ny, maxD, false);
+                });
+
+                if (polygon.length < 3) continue;
+                const signedArea = polygonArea(polygon);
+                const area = Math.abs(signedArea);
+                if (area < 1) continue;
+
+                cells.push({
+                    polygon,
+                    centroid: polygonCentroid(polygon, signedArea),
+                    area,
+                });
+            }
+        }
+    }
+    return cells;
+}
+
+function buildLayout() {
+    if (!el.gridCanvas || !el.hexShell) return;
+    const ctx = el.gridCanvas.getContext('2d');
+    const rect = el.gridCanvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+
+    el.gridCanvas.width = Math.round(rect.width * dpr);
+    el.gridCanvas.height = Math.round(rect.height * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    const lineCount = getLineCount();
+    const apothem = rect.height / 2;
+    const spacing = lineCount > 1 ? apothem / ((lineCount - 1) / 2) : apothem;
+    const offsets = Array.from({ length: lineCount }, (_, index) => {
+        return (index - (lineCount - 1) / 2) * spacing;
+    });
+
+    const axes = axisAngles.map(angle => {
+        return {
+            angle,
+            dx: Math.cos(angle),
+            dy: Math.sin(angle),
+            nx: Math.cos(angle + Math.PI / 2),
+            ny: Math.sin(angle + Math.PI / 2),
+            offsets,
         };
     });
 
-    if(elements.startBtn) elements.startBtn.onclick = () => switchView('view-game');
-    
-    if(elements.addPlayerBtn) elements.addPlayerBtn.onclick = () => { 
-        if(players.length<4) { players.push({name:`S${players.length+1}`, colorKey:'blue', score:0}); renderPlayers(); }
+    const hexPolygon = getHexPolygon(rect.width, rect.height);
+    const cells = buildCells(hexPolygon, axes, rect.width, rect.height, lineCount);
+
+    const maxSampleSize = 340;
+    const minSampleSize = 160;
+    const scaleFactor = Math.min(1, maxSampleSize / Math.max(rect.width, rect.height));
+    const sampleWidth = Math.max(minSampleSize, Math.round(rect.width * scaleFactor));
+    const sampleHeight = Math.max(Math.round(rect.height * scaleFactor), Math.round(sampleWidth * (rect.height / rect.width)));
+
+    sampleCanvas.width = sampleWidth;
+    sampleCanvas.height = sampleHeight;
+    const scaleX = sampleWidth / rect.width;
+    const scaleY = sampleHeight / rect.height;
+
+    const samplePoints = cells.map(cell => ({
+        x: cell.centroid.x * scaleX,
+        y: cell.centroid.y * scaleY,
+    }));
+
+    const totalArea = cells.reduce((sum, cell) => sum + cell.area, 0);
+    const avgArea = cells.length ? totalArea / cells.length : 0;
+    const fontSize = Math.max(8, Math.round(Math.sqrt(avgArea) * 0.28));
+
+    layout = {
+        rect,
+        ctx,
+        lineCount,
+        spacing,
+        axes,
+        hexPolygon,
+        cells,
+        samplePoints,
+        fontSize,
     };
-    if(elements.removePlayerBtn) elements.removePlayerBtn.onclick = () => { 
-        if(players.length>2) { players.pop(); renderPlayers(); }
-    };
-    
-    if(elements.randomStartBtn) elements.randomStartBtn.onclick = runRandomStarter;
-    
-    if(elements.nextGameBtn) elements.nextGameBtn.onclick = () => switchView('view-setup');
-    
-    if(elements.retryBtn) elements.retryBtn.onclick = () => {
-        elements.controlsSheet.classList.add('hidden');
-        resetGameUI();
-        startAutoScan();
-        if(elements.video.paused) elements.video.play();
-    };
-    
-    if(elements.installDismissBtn) elements.installDismissBtn.onclick = () => elements.installModal.classList.add('hidden');
-    if(elements.closeInstallBtn) elements.closeInstallBtn.onclick = () => elements.installModal.classList.add('hidden');
 }
 
-function switchView(id) {
-    document.querySelectorAll('.view').forEach(v => v.classList.remove('active-view'));
-    const view = document.getElementById(id);
-    if(view) view.classList.add('active-view');
-    if(id === 'view-game') startCamera(); else { stopCamera(); stopAutoScan(); }
-    if(id === 'view-history') renderHistory();
+function samplePointColor(point, data, width, height, jitter) {
+    const offsets = [
+        [0, 0],
+        [jitter, 0],
+        [-jitter, 0],
+        [0, jitter],
+        [0, -jitter],
+        [jitter, jitter],
+        [-jitter, jitter],
+        [jitter, -jitter],
+        [-jitter, -jitter],
+    ];
+
+    let sumR = 0;
+    let sumG = 0;
+    let sumB = 0;
+    let count = 0;
+
+    offsets.forEach(([dx, dy]) => {
+        const x = Math.round(point.x + dx);
+        const y = Math.round(point.y + dy);
+        if (x < 0 || y < 0 || x >= width || y >= height) return;
+        const index = (y * width + x) * 4;
+        sumR += data[index];
+        sumG += data[index + 1];
+        sumB += data[index + 2];
+        count += 1;
+    });
+
+    if (!count) return { r: 0, g: 0, b: 0 };
+    return {
+        r: Math.round(sumR / count),
+        g: Math.round(sumG / count),
+        b: Math.round(sumB / count),
+    };
 }
 
-// --- CORE LOGIC: BOARD DETECTION & GRID ---
-function resetGameUI() {
-    elements.controlsSheet.classList.add('hidden');
-    elements.canvas.style.display = 'none'; 
-    elements.video.style.display = 'block';
-    elements.instructionText.innerText = "Suche Spielfeld...";
-    elements.instructionText.classList.remove('success');
-    // Clear Overlay
-    if(elements.overlayCanvas) {
-        const ctx = elements.overlayCanvas.getContext('2d');
-        ctx.clearRect(0,0, elements.overlayCanvas.width, elements.overlayCanvas.height);
+function rgbToHex({ r, g, b }) {
+    const toHex = value => value.toString(16).padStart(2, '0');
+    return `#${toHex(r)}${toHex(g)}${toHex(b)}`.toUpperCase();
+}
+
+function renderFrame(timestamp) {
+    if (!isRendering) return;
+    requestAnimationFrame(renderFrame);
+    if (!layout || !el.gridCanvas) return;
+
+    const now = timestamp || performance.now();
+    if (now - lastSampleTime < sampleInterval) return;
+    lastSampleTime = now;
+
+    const { ctx, rect, cells, samplePoints, fontSize } = layout;
+    ctx.clearRect(0, 0, rect.width, rect.height);
+    ctx.save();
+    clipHex(ctx, rect.width, rect.height);
+
+    let averages = [];
+    if (el.video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+        sampleCtx.drawImage(el.video, 0, 0, sampleCanvas.width, sampleCanvas.height);
+        const frame = sampleCtx.getImageData(0, 0, sampleCanvas.width, sampleCanvas.height);
+        const jitter = Math.max(2, Math.round(Math.min(sampleCanvas.width, sampleCanvas.height) / 160));
+        averages = samplePoints.map(point => samplePointColor(point, frame.data, sampleCanvas.width, sampleCanvas.height, jitter));
+        lastAverages = averages;
     }
-    stabilityCounter = 0;
-}
 
-async function startCamera() {
-    try {
-        streamObject = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-        elements.video.srcObject = streamObject;
-        elements.video.onloadedmetadata = () => { elements.video.play(); startAutoScan(); };
-    } catch(e) { console.log(e); alert("Kamera-Zugriff verweigert oder nicht möglich."); }
-}
-function stopCamera() { if(streamObject) streamObject.getTracks().forEach(t=>t.stop()); }
-
-function startAutoScan() {
-    if(isScanning || !cvReady) return;
-    isScanning = true;
-    scanInterval = setInterval(runBoardCheck, 150);
-}
-function stopAutoScan() { isScanning = false; clearInterval(scanInterval); }
-
-function runBoardCheck() {
-    if (!elements.video.videoWidth) return;
-    const w = 320; const h = 240;
-    const smallCanvas = document.createElement('canvas'); smallCanvas.width = w; smallCanvas.height = h;
-    smallCanvas.getContext('2d').drawImage(elements.video, 0, 0, w, h);
-    
-    let src = cv.imread(smallCanvas);
-    let gray = new cv.Mat(); let binary = new cv.Mat(); let contours = new cv.MatVector();
-    
-    try {
-        cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-        // Starker Blur um Details (Löcher) zu ignorieren und nur die Form zu sehen
-        cv.GaussianBlur(gray, gray, new cv.Size(7, 7), 0);
-        cv.threshold(gray, binary, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU);
-        
-        cv.findContours(binary, contours, new cv.Mat(), cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-        
-        let maxArea = 0; let bestContour = null;
-        for(let i=0; i<contours.size(); i++) {
-            let cnt = contours.get(i);
-            let area = cv.contourArea(cnt);
-            if (area > maxArea) { maxArea = area; bestContour = cnt; }
-        }
-
-        // Overlay Setup
-        if(elements.overlayCanvas) {
-            elements.overlayCanvas.width = elements.video.videoWidth;
-            elements.overlayCanvas.height = elements.video.videoHeight;
-            const ctx = elements.overlayCanvas.getContext('2d');
-            ctx.clearRect(0, 0, elements.overlayCanvas.width, elements.overlayCanvas.height);
-
-            // Ist das Objekt groß genug?
-            if (maxArea > (w * h * 0.15)) {
-                // Wir nutzen den umschließenden Kreis (stabiler als Ecken-Erkennung bei Kerben)
-                let circle = cv.minEnclosingCircle(bestContour);
-                
-                // Hochskalieren auf Video-Größe
-                let scaleX = elements.video.videoWidth / w;
-                let scaleY = elements.video.videoHeight / h;
-                
-                detectedBoard = {
-                    x: circle.center.x * scaleX,
-                    y: circle.center.y * scaleY,
-                    r: circle.radius * Math.max(scaleX, scaleY)
-                };
-
-                // --- VISUAL DEBUG GRID ---
-                // Zeichne das Grid auf das Overlay
-                const pxPerMm = detectedBoard.r / BOARD_RADIUS_MM;
-                ctx.fillStyle = "rgba(255, 235, 59, 0.8)"; // Leuchtendes Gelb
-                
-                PIN_GRID.forEach(pin => {
-                    let px = detectedBoard.x + (pin.x * pxPerMm);
-                    let py = detectedBoard.y + (pin.y * pxPerMm);
-                    ctx.beginPath();
-                    ctx.arc(px, py, 5, 0, 2 * Math.PI);
-                    ctx.fill();
-                });
-
-                stabilityCounter++;
-                elements.instructionText.innerText = "Grid erkannt! Stillhalten...";
-                elements.instructionText.classList.add('success');
-
-                if (stabilityCounter > 12) { // 12 Frames stabil = ca 2 Sekunden
-                    stopAutoScan();
-                    elements.instructionText.innerText = "Analysiere...";
-                    analyzeWithGrid();
-                }
-            } else {
-                stabilityCounter = Math.max(0, stabilityCounter - 1);
-                elements.instructionText.innerText = "Suche Spielfeld...";
-                elements.instructionText.classList.remove('success');
-            }
-        }
-        
-        src.delete(); gray.delete(); binary.delete(); contours.delete();
-    } catch(e) { console.error(e); stopAutoScan(); }
-}
-
-function analyzeWithGrid() {
-    // Snapshot erstellen
-    elements.canvas.width = elements.video.videoWidth;
-    elements.canvas.height = elements.video.videoHeight;
-    elements.canvas.getContext('2d').drawImage(elements.video, 0, 0);
-    elements.video.style.display = 'none';
-    elements.canvas.style.display = 'block';
-    
-    let src = cv.imread(elements.canvas);
-    let hsv = new cv.Mat();
-    cv.cvtColor(src, hsv, cv.COLOR_RGBA2RGB);
-    cv.cvtColor(hsv, hsv, cv.COLOR_RGB2HSV);
-    
-    const pxPerMm = detectedBoard.r / BOARD_RADIUS_MM;
-    
-    players.forEach(p => {
-        p.score = 0;
-        let c = COLORS[p.colorKey];
-        
-        PIN_GRID.forEach(pin => {
-            let px = Math.floor(detectedBoard.x + (pin.x * pxPerMm));
-            let py = Math.floor(detectedBoard.y + (pin.y * pxPerMm));
-            
-            // Check Color at Position (Radius 8px)
-            if(px > 0 && px < hsv.cols && py > 0 && py < hsv.rows) {
-                let matchCount = 0;
-                let totalCount = 0;
-                let rad = 8;
-                
-                for(let ix = px-rad; ix < px+rad; ix+=2) {
-                    for(let iy = py-rad; iy < py+rad; iy+=2) {
-                        let pixel = hsv.ucharPtr(iy, ix);
-                        if(pixel[0] >= c.hsvLow[0] && pixel[0] <= c.hsvHigh[0] &&
-                           pixel[1] >= c.hsvLow[1] && pixel[1] <= c.hsvHigh[1]) {
-                            matchCount++;
-                        }
-                        totalCount++;
-                    }
-                }
-                // Wenn mehr als 20% der Pixel im Kreis die Farbe haben -> Treffer
-                if((matchCount/totalCount) > 0.20) {
-                    p.score++;
-                }
-            }
+    const overlayEnabled = el.pixelToggle ? el.pixelToggle.checked : false;
+    if (overlayEnabled) {
+        cells.forEach((cell, index) => {
+            const color = averages[index] || { r: 0, g: 0, b: 0 };
+            ctx.fillStyle = rgbToHex(color);
+            drawPolygonPath(ctx, cell.polygon);
+            ctx.fill();
         });
-    });
-    
-    src.delete(); hsv.delete();
-    finishGameAndSave();
+
+        ctx.font = `${fontSize}px "Source Sans Pro", "Segoe UI", sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.45)';
+        ctx.shadowBlur = Math.max(3, fontSize * 0.5);
+        cells.forEach((cell, index) => {
+            const color = averages[index] || { r: 0, g: 0, b: 0 };
+            ctx.fillStyle = '#ffffff';
+            ctx.fillText(rgbToHex(color), cell.centroid.x, cell.centroid.y);
+        });
+    }
+
+    ctx.restore();
 }
 
-function finishGameAndSave() {
-    elements.controlsSheet.classList.remove('hidden');
-    elements.scoreList.innerHTML = '';
-    const ranked = [...players].sort((a,b) => b.score - a.score);
-    
-    let hist = JSON.parse(localStorage.getItem('nxt_games_v18')) || [];
-    hist.push({ date: new Date().toISOString(), winner: ranked[0].name, topScore: ranked[0].score, players: players.map(p=>({n:p.name, s:p.score})) });
-    localStorage.setItem('nxt_games_v18', JSON.stringify(hist));
-
-    ranked.forEach((p, i) => {
-        elements.scoreList.innerHTML += `<div class="rank-card ${i===0?'rank-1':''}"><div style="display:flex;align-items:center;gap:10px;"><span class="rank-pos">${i+1}</span><span>${p.name}</span><div class="rank-dot" style="background:${COLORS[p.colorKey].hex}"></div></div><span class="rank-score">${p.score}</span></div>`;
-    });
-    
-    if(ranked[0].score > 0) confetti({particleCount:100, spread:70, origin:{y:0.6}});
+function sampleColors() {
+    if (!layout || el.video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return [];
+    const { samplePoints } = layout;
+    sampleCtx.drawImage(el.video, 0, 0, sampleCanvas.width, sampleCanvas.height);
+    const frame = sampleCtx.getImageData(0, 0, sampleCanvas.width, sampleCanvas.height);
+    const jitter = Math.max(2, Math.round(Math.min(sampleCanvas.width, sampleCanvas.height) / 160));
+    return samplePoints.map(point => samplePointColor(point, frame.data, sampleCanvas.width, sampleCanvas.height, jitter));
 }
 
-// --- UI HELPER ---
-function renderPlayers() {
-    if(!elements.playersContainer) return;
-    elements.playersContainer.innerHTML = '';
-    players.forEach((p, idx) => {
-        let dots = ''; Object.keys(COLORS).forEach(k => dots += `<div class="color-option ${p.colorKey===k?'active':''}" style="background:${COLORS[k].hex}" onclick="setPlayerColor(${idx}, '${k}')"></div>`);
-        elements.playersContainer.innerHTML += `<div class="player-card"><div class="player-name-row"><span class="player-label">Name</span><input class="player-input" value="${p.name}" onchange="updatePlayerName(this)" data-idx="${idx}"></div><div class="color-picker">${dots}</div></div>`;
+// ============================================
+// 6. SCAN & FARBANALYSE
+// ============================================
+function triggerScan() {
+    if (!layout) return;
+    el.instructionText.textContent = 'Analysiere...';
+
+    const averages = lastAverages.length ? lastAverages : sampleColors();
+    const counts = Object.keys(COLORS).reduce((acc, key) => ({ ...acc, [key]: 0 }), {});
+
+    averages.forEach(avg => {
+        const colorKey = classifyColor(avg);
+        if (colorKey) counts[colorKey] += 1;
     });
-    elements.playerCountDisplay.innerText = players.length;
+
+    players.forEach(p => {
+        p.score = counts[p.colorKey] || 0;
+    });
+
+    showResults();
 }
 
-window.updatePlayerName = (input) => { players[input.dataset.idx].name = input.value; };
-window.setPlayerColor = (idx, key) => { players[idx].colorKey = key; renderPlayers(); };
+function rgbToHsv({ r, g, b }) {
+    const rn = r / 255;
+    const gn = g / 255;
+    const bn = b / 255;
+    const max = Math.max(rn, gn, bn);
+    const min = Math.min(rn, gn, bn);
+    const delta = max - min;
 
-function runRandomStarter() {
-    elements.randomResultDisplay.classList.remove('hidden');
-    elements.randomResultDisplay.innerText = "Würfle...";
-    setTimeout(() => {
-        elements.randomResultDisplay.innerText = players[Math.floor(Math.random()*players.length)].name + " beginnt!";
-    }, 1000);
+    let h = 0;
+    if (delta !== 0) {
+        if (max === rn) h = ((gn - bn) / delta) % 6;
+        else if (max === gn) h = (bn - rn) / delta + 2;
+        else h = (rn - gn) / delta + 4;
+        h *= 60;
+        if (h < 0) h += 360;
+    }
+
+    const s = max === 0 ? 0 : delta / max;
+    const v = max;
+
+    return [Math.round(h / 2), Math.round(s * 255), Math.round(v * 255)];
+}
+
+function hsvInRange(h, s, v, low, high) {
+    const [h1, s1, v1] = low;
+    const [h2, s2, v2] = high;
+    const satOk = s >= s1 && s <= s2;
+    const valOk = v >= v1 && v <= v2;
+    if (!satOk || !valOk) return false;
+    if (h1 <= h2) return h >= h1 && h <= h2;
+    return h >= h1 || h <= h2;
+}
+
+function classifyColor(avg) {
+    const [h, s, v] = rgbToHsv(avg);
+    if (v < 40 || s < 40) return null;
+    return Object.keys(COLORS).find(key => hsvInRange(h, s, v, COLORS[key].hsvLow, COLORS[key].hsvHigh)) || null;
+}
+
+// ============================================
+// 7. ERGEBNIS & VERLAUF
+// ============================================
+function showResults() {
+    el.controlsSheet?.classList.remove('hidden');
+
+    const ranked = [...players].sort((a, b) => b.score - a.score);
+    const winner = ranked[0];
+
+    if (winner.score > 0) {
+        el.winnerMsg.textContent = `🏆 ${winner.name} gewinnt!`;
+        confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
+    } else {
+        el.winnerMsg.textContent = 'Keine Steine erkannt';
+    }
+
+    el.scoreList.innerHTML = ranked.map((p, i) => `
+        <div class="rank-card ${i === 0 && p.score > 0 ? 'rank-1' : ''}">
+            <div class="rank-info">
+                <span class="rank-pos">${i + 1}</span>
+                <span class="rank-name">${p.name}</span>
+                <div class="rank-dot" style="background:${COLORS[p.colorKey].hex}"></div>
+            </div>
+            <span class="rank-score">${p.score}</span>
+        </div>
+    `).join('');
+
+    let hist = loadHistory();
+    hist.push({
+        date: new Date().toISOString(),
+        winner: winner.score > 0 ? winner.name : '-',
+        topScore: winner.score,
+        details: players.map(p => `${p.name}:${p.score}`).join(', ')
+    });
+    if (hist.length > 50) hist = hist.slice(-50);
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(hist));
+    renderHistory();
+}
+
+function retryScan() {
+    el.controlsSheet?.classList.add('hidden');
+    setScanReady(true, 'Bereit - drücke SCAN');
+}
+
+function clearHistory() {
+    if (confirm('Löschen?')) {
+        localStorage.removeItem(HISTORY_KEY);
+        renderHistory();
+    }
+}
+
+function loadHistory() {
+    let hist = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+    if (hist.length === 0) {
+        const legacy = JSON.parse(localStorage.getItem('nxt_games_v20') || '[]');
+        if (legacy.length > 0) {
+            hist = legacy;
+            localStorage.setItem(HISTORY_KEY, JSON.stringify(hist));
+        }
+    }
+    return hist;
 }
 
 function renderHistory() {
-    let hist = JSON.parse(localStorage.getItem('nxt_games_v18')) || [];
     const list = document.getElementById('history-list');
-    if(!list) return;
-    list.innerHTML = hist.length ? '' : '<div class="empty-state">Keine Einträge</div>';
-    hist.slice().reverse().forEach(g => {
-        let d = new Date(g.date).toLocaleDateString('de-DE');
-        let details = g.players.map(p => `${p.n}: ${p.s}`).join(', ');
-        list.innerHTML += `<div class="history-item"><div><strong>🏆 ${g.winner} (${g.topScore})</strong><br><small>${details}</small></div><small>${d}</small></div>`;
-    });
+    if (!list) return;
+    const hist = loadHistory();
+
+    if (hist.length === 0) {
+        list.innerHTML = '<div class="empty-state">Keine Daten</div>';
+        renderStats([]);
+        return;
+    }
+
+    list.innerHTML = hist.slice().reverse().map(h => {
+        let d = new Date(h.date).toLocaleDateString();
+        return `
+            <div class="history-item">
+                <div>
+                    <div class="hist-winner">🏆 ${h.winner} (${h.topScore})</div>
+                    <div style="font-size:0.8rem;color:#6f8b8d">${h.details}</div>
+                </div>
+                <div style="font-size:0.8rem;color:#6f8b8d">${d}</div>
+            </div>
+        `;
+    }).join('');
+
+    renderStats(hist);
 }
 
-function checkInstallState() {
-    if (!elements.installModal) return;
+function renderStats(hist) {
+    const stats = document.getElementById('stats-content');
+    if (!stats) return;
+
+    if (!hist.length) {
+        stats.innerHTML = '<p class="empty-state">Noch keine Spieldaten</p>';
+        return;
+    }
+
+    const wins = {};
+    hist.forEach(h => { wins[h.winner] = (wins[h.winner] || 0) + 1; });
+    const entries = Object.entries(wins).filter(([name]) => name !== '-');
+    entries.sort((a, b) => b[1] - a[1]);
+
+    stats.innerHTML = `
+        <p><strong>Spiele:</strong> ${hist.length}</p>
+        <p><strong>Top Gewinner:</strong> ${entries[0] ? `${entries[0][0]} (${entries[0][1]})` : '—'}</p>
+    `;
+}
+
+// ============================================
+// 8. INSTALLATION (PWA)
+// ============================================
+function checkInstallPrompt() {
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
     const isAndroid = /Android/.test(navigator.userAgent);
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
-    if (isStandalone) return;
+    if (isStandalone || !el.installModal) return;
 
-    if (isIOS) {
-        elements.installInstructions.innerHTML = `1. Tippe unten auf <span class="step-icon icon-ios-share"></span><br>2. Wähle <strong>"Zum Home-Bildschirm"</strong>`;
-        setTimeout(() => elements.installModal.classList.remove('hidden'), 2000);
-    } else if (isAndroid) {
-        elements.installInstructions.innerHTML = `1. Tippe oben auf <span class="step-icon icon-android-menu"></span><br>2. Wähle <strong>"App installieren"</strong>`;
-        setTimeout(() => elements.installModal.classList.remove('hidden'), 2000);
-    }
+    const show = (msg) => {
+        document.getElementById('install-instructions').innerHTML = msg;
+        setTimeout(() => el.installModal.classList.remove('hidden'), 2000);
+    };
+
+    if (isIOS) show(`1. Tippe auf <span class="step-icon icon-ios-share"></span><br>2. "Zum Home-Bildschirm"`);
+    else if (isAndroid) show(`1. Tippe auf Menü<br>2. "App installieren"`);
 }
 
-if(document.getElementById('delete-btn')) { 
-    document.getElementById('delete-btn').onclick = () => { 
-        if(confirm('Verlauf löschen?')) { localStorage.removeItem('nxt_games_v18'); renderHistory(); } 
-    }; 
+function registerServiceWorker() {
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('./sw.js').catch(err => console.warn('SW failed', err));
+    }
 }
