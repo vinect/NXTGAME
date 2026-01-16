@@ -3,13 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>NXTgame</title>
-    <meta name="apple-mobile-web-app-title" content="NXTgame">
-    <link rel="manifest" href="manifest.json">
+    <title>NXT Game</title>
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="theme-color" content="#009B9E">
     <link rel="apple-touch-icon" href="icon.png">
+    <link rel="manifest" href="manifest.json">
     
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Source+Sans+Pro:wght@400;600;700&display=swap" rel="stylesheet">
@@ -22,12 +21,23 @@
 
     <header class="glass-header">
         <div class="brand-link">
-            <img src="NXT Titel.png" alt="NXT" class="brand-logo" onerror="this.style.display='none'">
-            <span style="font-weight:700; color:#009B9E; margin-left:10px;">NXT</span>
+            <img src="NXT_Titel.png" alt="NXT" class="brand-logo" onerror="this.style.display='none'">
         </div>
-        <button id="menu-btn" class="icon-btn">
-            <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
-        </button>
+        <div class="header-actions">
+            <button id="home-btn" class="icon-btn hidden" aria-label="Zur Startseite">
+                <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none">
+                    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                    <polyline points="9 22 9 12 15 12 15 22"></polyline>
+                </svg>
+            </button>
+            <button id="menu-btn" class="icon-btn" aria-label="Menü öffnen">
+                <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none">
+                    <line x1="3" y1="12" x2="21" y2="12"></line>
+                    <line x1="3" y1="6" x2="21" y2="6"></line>
+                    <line x1="3" y1="18" x2="21" y2="18"></line>
+                </svg>
+            </button>
+        </div>
     </header>
 
     <div id="side-menu-overlay" class="menu-overlay"></div>
@@ -39,19 +49,15 @@
             <button class="menu-item" data-target="view-instructions">Anleitung</button>
             <button class="menu-item" data-target="view-history">Verlauf</button>
             <button class="menu-item" data-target="view-insights">Insights</button>
-            <div class="menu-footer">NXT Reutlingen v18.4 (Grid)</div>
+            <div class="menu-footer">NXT v20.0</div>
         </div>
     </nav>
 
-    <button id="fab-home" class="fab-btn hidden">
-        <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
-    </button>
-
+    <!-- SETUP VIEW -->
     <section id="view-setup" class="view active-view">
         <div class="center-content">
             <div class="glass-card lobby-card">
                 <h2>NEUES SPIEL</h2>
-                
                 <div class="lobby-header">
                     <span>SPIELER</span>
                     <div class="player-controls">
@@ -60,69 +66,101 @@
                         <button id="add-player-btn" class="ctrl-btn">+</button>
                     </div>
                 </div>
-                
                 <div id="players-container" class="players-list"></div>
-
                 <div class="random-starter-section">
                     <button id="random-start-btn" class="secondary-btn">Wer fängt an?</button>
                     <div id="random-result" class="random-result hidden"></div>
                 </div>
-
                 <button id="start-game-btn" class="primary-btn big-btn">STARTEN</button>
             </div>
         </div>
     </section>
 
+    <!-- GAME VIEW -->
     <section id="view-game" class="view">
         <div id="camera-container">
-            <div class="camera-wrapper">
-                <video id="video" playsinline autoplay muted></video>
-                <canvas id="canvas" style="display:none;"></canvas>
-                <canvas id="overlay-canvas" style="position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none;"></canvas>
-                
-                <div class="tech-frame">
-                    <div class="corner tl"></div><div class="corner tr"></div>
-                    <div class="corner bl"></div><div class="corner br"></div>
+            <div class="hexagon-frame">
+                <div class="camera-wrapper">
+                    <video id="video" playsinline autoplay muted></video>
+                    <canvas id="canvas"></canvas>
                 </div>
-                
-                <div id="scan-line" class="scan-overlay hidden"></div>
+                <svg class="hex-grid-overlay" viewBox="-150 -150 300 300" preserveAspectRatio="xMidYMid meet">
+                    <!-- Hexagon Umriss -->
+                    <polygon class="hex-outline" points="0,-140 121.24,-70 121.24,70 0,140 -121.24,70 -121.24,-70" />
+                    <!-- Pin-Positionen werden per JS gefüllt -->
+                    <g id="pin-template-group"></g>
+                </svg>
+                <canvas id="overlay-canvas"></canvas>
             </div>
-            <div id="instruction-text" class="status-badge">Suche Spielfeld...</div>
+            
+            <div class="scan-controls">
+                <div id="instruction-text" class="status-text">OpenCV lädt...</div>
+                <button id="trigger-scan-btn" class="scan-btn" disabled>
+                    <div class="scan-ring"></div>
+                    <span>SCAN</span>
+                </button>
+            </div>
         </div>
 
         <div id="controls-sheet" class="glass-sheet hidden">
-            <h2 id="winner-msg" style="text-align:center; color:#009B9E;">Ergebnis</h2>
+            <h2 id="winner-msg">Ergebnis</h2>
             <div id="score-list" class="ranking-list"></div>
             <div class="button-group">
                 <button id="next-game-btn" class="primary-btn">NEUES SPIEL</button>
             </div>
-            <button id="retry-btn" class="text-btn">Wiederholen</button>
+            <button id="retry-btn" class="text-btn">Messung wiederholen</button>
         </div>
     </section>
 
+    <!-- SHARE VIEW -->
     <section id="view-share" class="view view-scroll">
         <div class="center-content">
             <div class="glass-card lobby-card">
                 <h2>TEILEN</h2>
                 <div class="qr-display-wrapper">
-                    <img src="qrcode.png" alt="QR Code" class="static-qr" onerror="this.parentElement.innerText='qrcode.png fehlt'">
+                    <img src="qrcode.png" alt="QR Code" class="static-qr" onerror="this.parentElement.innerHTML='<p>qrcode.png fehlt</p>'">
                 </div>
-                <p style="text-align:center; color:#666; margin-top:20px;">Scannen zum Öffnen</p>
+                <p class="share-hint">Scannen zum Öffnen</p>
             </div>
         </div>
     </section>
 
+    <!-- INSTRUCTIONS VIEW -->
     <section id="view-instructions" class="view view-scroll">
         <div class="content-padding">
             <h2>ANLEITUNG</h2>
-            <div class="glass-card">
-                <h3>Das Spielfeld</h3>
-                <p>Halte das Smartphone so, dass die <strong>gelben Punkte</strong> genau über den Löchern liegen.</p>
-                <p>Das Raster projiziert automatisch die 37 Positionen.</p>
+            <div class="glass-card instruction-card">
+                <h3>So funktioniert's</h3>
+                <div class="instruction-step">
+                    <div class="step-number">1</div>
+                    <p>Richte die Kamera auf das Spielbrett, sodass es komplett sichtbar ist.</p>
+                </div>
+                <div class="instruction-step">
+                    <div class="step-number">2</div>
+                    <p>Warte, bis die <strong>weißen Kreise</strong> auf den Pins erscheinen und türkis werden.</p>
+                </div>
+                <div class="instruction-step">
+                    <div class="step-number">3</div>
+                    <p>Drücke den <strong>SCAN-Button</strong>, wenn er leuchtet.</p>
+                </div>
+                <div class="instruction-step">
+                    <div class="step-number">4</div>
+                    <p>Das Ergebnis zeigt, wie viele Pins jeder Spieler hat.</p>
+                </div>
+            </div>
+            <div class="glass-card instruction-card">
+                <h3>Tipps für beste Ergebnisse</h3>
+                <ul class="tips-list">
+                    <li>Gute Beleuchtung verwenden</li>
+                    <li>Brett flach und gerade halten</li>
+                    <li>Schatten vermeiden</li>
+                    <li>Kamera senkrecht über dem Brett</li>
+                </ul>
             </div>
         </div>
     </section>
 
+    <!-- HISTORY VIEW -->
     <section id="view-history" class="view view-scroll">
         <div class="content-padding">
             <div class="header-row">
@@ -130,32 +168,37 @@
                 <button id="delete-btn" class="text-btn-danger">Leeren</button>
             </div>
             <div id="history-list" class="glass-list">
-                <div class="empty-state">Keine Daten</div>
+                <div class="empty-state">Keine Spiele gespeichert</div>
             </div>
         </div>
     </section>
 
+    <!-- INSIGHTS VIEW -->
     <section id="view-insights" class="view view-scroll">
         <div class="content-padding">
             <h2>INSIGHTS</h2>
             <div class="glass-card highlight-card">
                 <h3>Fakultät NXT</h3>
-                <a href="https://www.nxt.reutlingen-university.de/" target="_blank" class="link-btn">Zur Website →</a>
+                <p>Nachhaltigkeit und Technologie an der Hochschule Reutlingen</p>
+                <a href="https://www.nxt.reutlingen-university.de/" target="_blank" rel="noopener" class="link-btn">Zur Website →</a>
             </div>
-            <div class="glass-card">
-                <h3>Technologie</h3>
-                <p>NXTgame nutzt OpenCV.js für Hexagon-Erkennung und eine Grid-Projektion basierend auf CAD-Daten.</p>
+            <div id="stats-card" class="glass-card">
+                <h3>Statistiken</h3>
+                <div id="stats-content">
+                    <p class="empty-state">Noch keine Spieldaten</p>
+                </div>
             </div>
         </div>
     </section>
 
+    <!-- INSTALL MODAL -->
     <div id="install-modal" class="install-modal hidden">
         <div class="install-content glass-card">
-            <button id="close-install" class="close-icon-btn">×</button>
+            <button id="close-install" class="close-icon-btn" aria-label="Schließen">×</button>
             <div class="install-icon">📲</div>
             <h3>App installieren</h3>
             <div id="install-instructions"></div>
-            <button id="install-dismiss-btn" class="primary-btn" style="margin-top:20px;">Verstanden</button>
+            <button id="install-dismiss-btn" class="primary-btn">Verstanden</button>
         </div>
     </div>
 
