@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>NXTgame</title>
+    <title>NXTgame - Enhanced</title>
     <meta name="apple-mobile-web-app-title" content="NXTgame">
     <link rel="manifest" href="manifest.json">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -22,7 +22,7 @@
 
     <header class="glass-header">
         <a href="https://www.nxt.reutlingen-university.de/" target="_blank" class="brand-link">
-            <img src="NXT Titel.png" alt="NXT" class="brand-logo">
+            <img src="NXT_Titel.png" alt="NXT" class="brand-logo">
         </a>
         <button id="menu-btn" class="icon-btn">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
@@ -32,13 +32,13 @@
     <div id="side-menu-overlay" class="menu-overlay"></div>
     <nav id="side-menu" class="glass-menu">
         <div class="menu-content">
-            <h3 class="menu-title">MENÜ</h3>
+            <h3 class="menu-title">MENÜ - ENHANCED</h3>
             <button class="menu-item active" data-target="view-setup">Startseite</button>
             <button class="menu-item" data-target="view-share">Teilen (QR)</button>
             <button class="menu-item" data-target="view-instructions">Anleitung</button>
             <button class="menu-item" data-target="view-history">Verlauf</button>
             <button class="menu-item" data-target="view-insights">Insights</button>
-            <div class="menu-footer">NXT Reutlingen v17.0</div>
+            <div class="menu-footer">NXT Reutlingen v17.1 - Enhanced Detection</div>
         </div>
     </nav>
 
@@ -50,6 +50,7 @@
         <div class="center-content">
             <div class="glass-card lobby-card">
                 <h2>NEUES SPIEL</h2>
+                
                 <div class="lobby-header">
                     <span class="subtitle">Spieler & Farben</span>
                     <div class="player-controls">
@@ -93,7 +94,7 @@
                 <div id="lock-overlay" class="lock-overlay hidden"></div>
                 <div id="scan-line" class="scan-overlay hidden"></div>
             </div>
-            <div id="instruction-text" class="instruction-badge">Suche Spielfeld...</div>
+            <div id="instruction-text" class="instruction-badge">📐 Suche Hexagon-Spielfeld...</div>
         </div>
 
         <div id="controls-sheet" class="glass-sheet hidden">
@@ -125,14 +126,27 @@
 
     <section id="view-instructions" class="view view-scroll">
         <div class="content-padding">
-            <h2>ANLEITUNG</h2>
+            <h2>ANLEITUNG - ENHANCED</h2>
+            <div class="glass-card">
+                <h3>✨ Neue Erkennung</h3>
+                <p><strong>Hexagon-Erkennung:</strong> Die App erkennt jetzt präzise die sechseckige Form des Spielbretts und ignoriert andere Objekte.</p>
+            </div>
             <div class="glass-card">
                 <h3>Das Spielfeld</h3>
-                <p>Die App erkennt automatisch das große Sechseck. Halte das Brett so, dass es sich gut vom Hintergrund abhebt.</p>
+                <p>Die App erkennt automatisch das große Sechseck. Halte das Brett so, dass es sich gut vom Hintergrund abhebt. Die neue Erkennung ist viel genauer!</p>
             </div>
             <div class="glass-card">
                 <h3>Die KI</h3>
                 <p>Gummibänder (Linien) werden ignoriert. Nur die farbigen Figuren werden gezählt.</p>
+            </div>
+            <div class="glass-card">
+                <h3>🔧 Technische Verbesserungen</h3>
+                <ul>
+                    <li><strong>Form-Validierung:</strong> Prüft ob Objekt wirklich ein Hexagon ist</li>
+                    <li><strong>Größenfilter:</strong> Ignoriert zu kleine/große Objekte</li>
+                    <li><strong>Stabilität:</strong> Mehrfache Bestätigung vor Analyse</li>
+                    <li><strong>Template-Matching:</strong> Optional mit Referenzbild</li>
+                </ul>
             </div>
         </div>
     </section>
@@ -155,6 +169,21 @@
             <div class="glass-card highlight-card">
                 <h3>Fakultät NXT</h3>
                 <a href="https://www.nxt.reutlingen-university.de/" target="_blank" class="link-btn">Zur Website →</a>
+            </div>
+            <div class="glass-card">
+                <h3>🚀 Verbesserungsvorschläge</h3>
+                <h4>1. Weitere Optimierungen:</h4>
+                <ul>
+                    <li><strong>Referenzbild hinzufügen:</strong> Das "reference_board.png" ist bereits integriert</li>
+                    <li><strong>Lichtbedingungen:</strong> Bessere Anpassung an verschiedene Beleuchtung</li>
+                    <li><strong>Kamera-Kalibrierung:</strong> Für noch präzisere Erkennung</li>
+                </ul>
+                <h4>2. UI/UX Verbesserungen:</h4>
+                <ul>
+                    <li><strong>Debug-Modus:</strong> Zeige erkannte Konturen zur Fehlerbehebung</li>
+                    <li><strong>Validierungsanzeige:</strong> Zeige warum ein Board abgelehnt wurde</li>
+                    <li><strong>Feinabstimmung:</strong> Einstellungen für Erkennungsparameter</li>
+                </ul>
             </div>
         </div>
     </section>
