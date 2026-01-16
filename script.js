@@ -2,11 +2,12 @@
 const MAX_PLAYERS = 4;
 const MIN_PLAYERS = 2;
 
+// FARBEN & HSV WERTE (Abgestimmt für Spielfiguren vs. Gummiband)
 const COLOR_DEFS = {
-    magenta: { name: 'Magenta', hex: '#F20089', hsvLow: [145, 100, 80, 0], hsvHigh: [175, 255, 255, 255] },
-    yellow: { name: 'Gelb', hex: '#FFD600', hsvLow: [20, 100, 100, 0], hsvHigh: [35, 255, 255, 255] },
-    blue: { name: 'Blau', hex: '#2962FF', hsvLow: [90, 100, 50, 0], hsvHigh: [130, 255, 255, 255] },
-    green: { name: 'Grün', hex: '#00C853', hsvLow: [35, 50, 50, 0], hsvHigh: [85, 255, 255, 255] }
+    magenta: { name: 'Magenta', hex: '#F20089', hsvLow: [140, 50, 50, 0], hsvHigh: [170, 255, 255, 255] },
+    yellow: { name: 'Gelb', hex: '#FFD600', hsvLow: [20, 100, 100, 0], hsvHigh: [40, 255, 255, 255] },
+    blue: { name: 'Blau', hex: '#2962FF', hsvLow: [100, 100, 50, 0], hsvHigh: [130, 255, 255, 255] },
+    green: { name: 'Grün', hex: '#00C853', hsvLow: [40, 50, 50, 0], hsvHigh: [85, 255, 255, 255] }
 };
 
 let players = [ { name: 'Spieler 1', colorKey: 'magenta', score: 0 }, { name: 'Spieler 2', colorKey: 'yellow', score: 0 } ];
@@ -133,14 +134,12 @@ document.addEventListener("visibilitychange", async () => {
     else { if (activeViewId === 'view-game') setTimeout(startCamera, 300); }
 });
 
-// --- INSTALL BANNER LOGIC ---
+// --- INSTALL BANNER ---
 function checkInstallState() {
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
     if (isStandalone) return; 
-
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
     const isAndroid = /Android/.test(navigator.userAgent);
-
     if (isIOS) {
         installInstructions.innerHTML = `1. Tippe unten auf <span class="step-icon icon-ios-share"></span><br>2. Wähle <strong>"Zum Home-Bildschirm"</strong>`;
         setTimeout(() => installModal.classList.remove('hidden'), 2000);
@@ -184,6 +183,7 @@ function startAutoScan() {
 }
 function stopAutoScan() { isScanning = false; clearInterval(scanInterval); scanLine.classList.add('hidden'); instructionText.classList.remove('scanning'); }
 
+// --- PHASE 1: PIN DETECTION ---
 function runPinCheck() {
     if (!video.videoWidth) return;
     const w = 320; const h = 240;
@@ -245,6 +245,7 @@ function triggerFullAnalysis() {
     analyzeImageFull();
 }
 
+// --- PHASE 2: PIECE COUNTING (WITH ANTI-RUBBER-BAND LOGIC) ---
 function analyzeImageFull() {
     let src = cv.imread(canvas); let hsv = new cv.Mat(); let contours = new cv.MatVector();
     try {
@@ -256,11 +257,21 @@ function analyzeImageFull() {
             let mask = new cv.Mat(); let c = COLOR_DEFS[p.colorKey];
             let low = new cv.Mat(roi.rows, roi.cols, roi.type(), c.hsvLow); let high = new cv.Mat(roi.rows, roi.cols, roi.type(), c.hsvHigh);
             cv.inRange(roi, low, high, mask);
-            let kernel = cv.Mat.ones(3, 3, cv.CV_8U); 
-            cv.morphologyEx(mask, mask, cv.MORPH_OPEN, kernel);
+            
+            // TRICK: EROSION ENTFERNT DÜNNE LINIEN (Gummibänder)
+            let kernel = cv.Mat.ones(5, 5, cv.CV_8U); // Aggressive Erosion
+            cv.erode(mask, mask, kernel);
+            
+            // DILATION: MACHT DIE FIGUR WIEDER GROSS (aber ohne Gummis)
+            cv.dilate(mask, mask, kernel);
+            
             cv.findContours(mask, contours, new cv.Mat(), cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-            p.score = 0; for(let i=0; i<contours.size(); i++) { if(cv.contourArea(contours.get(i)) > 300) p.score++; }
-            mask.delete(); low.delete(); high.delete();
+            p.score = 0; 
+            for(let i=0; i<contours.size(); i++) { 
+                // Nur was groß genug ist (Figur), wird gezählt
+                if(cv.contourArea(contours.get(i)) > 300) p.score++; 
+            }
+            mask.delete(); low.delete(); high.delete(); kernel.delete();
         });
         finishGameAndSave();
         src.delete(); hsv.delete(); roi.delete(); contours.delete();
@@ -273,9 +284,9 @@ function finishGameAndSave() {
     const rankedPlayers = [...players].sort((a,b) => b.score - a.score);
     const winner = rankedPlayers[0];
     
-    let history = JSON.parse(localStorage.getItem('nxt_games_v15')) || [];
+    let history = JSON.parse(localStorage.getItem('nxt_games_v16')) || [];
     history.push({ date: new Date().toISOString(), winner: winner.name, topScore: winner.score, players: players.map(p=>({n:p.name, s:p.score})) });
-    localStorage.setItem('nxt_games_v15', JSON.stringify(history));
+    localStorage.setItem('nxt_games_v16', JSON.stringify(history));
 
     rankedPlayers.forEach((p, idx) => {
         const rank = idx + 1;
@@ -295,7 +306,7 @@ function finishGameAndSave() {
 retryBtn.onclick = () => { resetGameUI(); startAutoScan(); if(video.paused) video.play(); };
 
 function renderHistory() {
-    let history = JSON.parse(localStorage.getItem('nxt_games_v15')) || [];
+    let history = JSON.parse(localStorage.getItem('nxt_games_v16')) || [];
     historyList.innerHTML = '';
     if(history.length === 0) { historyList.innerHTML = '<div class="empty-state">Keine Einträge</div>'; return; }
     history.slice().reverse().forEach(g => {
@@ -306,6 +317,8 @@ function renderHistory() {
         historyList.appendChild(div);
     });
 }
-deleteBtn.onclick = () => { if(confirm('Löschen?')) { localStorage.removeItem('nxt_games_v15'); renderHistory(); } };
+deleteBtn.onclick = () => { if(confirm('Löschen?')) { localStorage.removeItem('nxt_games_v16'); renderHistory(); } };
 
 renderPlayers();
+checkIOS();
+function checkIOS() { const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream; const isStandalone = window.matchMedia('(display-mode: standalone)').matches; if (isIOS && !isStandalone) { const p = document.getElementById('ios-install-prompt'); setTimeout(() => p.classList.remove('hidden'), 2000); document.getElementById('close-prompt').onclick = () => p.classList.add('hidden'); } }

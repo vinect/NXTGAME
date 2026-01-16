@@ -5,7 +5,7 @@
     --glass-border: 1px solid rgba(255, 255, 255, 0.6);
     --header-height: 60px;
     
-    /* FARBEN */
+    /* NEUE FARBPALETTE (Spielfiguren) */
     --col-magenta: #F20089;
     --col-yellow: #FFD600;
     --col-blue: #2962FF;
@@ -69,11 +69,9 @@ body { font-family: 'Source Sans Pro', sans-serif; margin: 0; background-color: 
 .color-option.active { transform: scale(1.15); box-shadow: 0 4px 10px rgba(0,0,0,0.2); border-color: rgba(0,0,0,0.1); }
 .color-option.active::after { transform: translate(-50%, -50%) scale(1); }
 
-/* QR CODE IMAGE STYLES */
+/* QR & INSTALL */
 .qr-display-wrapper { margin-top: 20px; display: flex; justify-content: center; align-items: center; }
 .static-qr { width: 200px; height: 200px; border-radius: 12px; border: 4px solid white; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: block; }
-
-/* INSTALL MODAL */
 .install-modal { position: fixed; inset: 0; background: rgba(0,0,0,0.7); backdrop-filter: blur(5px); z-index: 2000; display: flex; justify-content: center; align-items: center; padding: 20px; opacity: 1; transition: opacity 0.3s; }
 .install-modal.hidden { opacity: 0; pointer-events: none; }
 .install-content { position: relative; width: 100%; max-width: 320px; text-align: center; }
@@ -84,7 +82,7 @@ body { font-family: 'Source Sans Pro', sans-serif; margin: 0; background-color: 
 .icon-ios-share { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23007AFF' stroke-width='2'%3E%3Cpath d='M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8'/%3E%3Cpolyline points='16 6 12 2 8 6'/%3E%3Cline x1='12' y1='2' x2='12' y2='15'/%3E%3C/svg%3E"); }
 .icon-android-menu { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23555' stroke-width='2'%3E%3Ccircle cx='12' cy='12' r='1'/%3E%3Ccircle cx='12' cy='5' r='1'/%3E%3Ccircle cx='12' cy='19' r='1'/%3E%3C/svg%3E"); }
 
-/* Buttons */
+/* Buttons & Elements */
 .primary-btn { background: var(--ui-teal); color: white; border: none; border-radius: 12px; font-weight: 700; padding: 16px; width: 100%; display: flex; align-items: center; justify-content: center; gap: 10px; box-shadow: 0 4px 12px rgba(0, 155, 158, 0.3); transition: transform 0.2s; }
 .primary-btn:active { transform: scale(0.97); }
 .primary-btn svg { width: 24px; stroke-width: 3px; }
