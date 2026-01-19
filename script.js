@@ -490,7 +490,8 @@ function triggerScan() {
 
     try {
         const counts = Object.keys(COLORS).reduce((acc, key) => ({ ...acc, [key]: 0 }), {});
-        const usedCv = scanWithContourAlignment(counts);
+        const usedDeskew = detectAndDeskewBoard(el.video, counts);
+        const usedCv = usedDeskew || scanWithContourAlignment(counts);
         if (!usedCv) scanWithStaticOverlay(counts);
 
         players.forEach(p => {
@@ -558,6 +559,93 @@ function scanWithStaticOverlay(counts) {
         const colorKey = classifyColor(avg);
         if (colorKey) counts[colorKey] += 1;
     });
+}
+
+function detectAndDeskewBoard(videoElement, countsObject) {
+    if (!window.cv || !window.cvReady) return false;
+    const view = getViewBoxMetrics();
+    if (!view) return false;
+    const dpr = window.devicePixelRatio || 1;
+    const canvasWidth = Math.max(1, Math.round(view.rect.width * dpr));
+    const canvasHeight = Math.max(1, Math.round(view.rect.height * dpr));
+    sampleCanvas.width = canvasWidth;
+    sampleCanvas.height = canvasHeight;
+    sampleCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    drawVideoCover(sampleCtx, videoElement, view.rect.width, view.rect.height);
+
+    let src = null;
+    let gray = null;
+    let blur = null;
+    let edges = null;
+    let contours = null;
+    let hierarchy = null;
+    let rotated = null;
+    let rotMat = null;
+    try {
+        src = cv.imread(sampleCanvas);
+        gray = new cv.Mat();
+        blur = new cv.Mat();
+        edges = new cv.Mat();
+        contours = new cv.MatVector();
+        hierarchy = new cv.Mat();
+
+        cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+        cv.GaussianBlur(gray, blur, new cv.Size(5, 5), 0);
+        cv.Canny(blur, edges, 40, 120);
+        cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+        let bestRect = null;
+        let bestArea = 0;
+        for (let i = 0; i < contours.size(); i += 1) {
+            const cnt = contours.get(i);
+            const area = cv.contourArea(cnt);
+            if (area < 5000) continue;
+            const rect = cv.minAreaRect(cnt);
+            const w = rect.size.width;
+            const h = rect.size.height;
+            if (!w || !h) continue;
+            const ratio = w > h ? w / h : h / w;
+            if (ratio > 1.25) continue;
+            if (area > bestArea) {
+                bestArea = area;
+                bestRect = rect;
+            }
+        }
+        if (!bestRect) return false;
+
+        let angle = bestRect.angle;
+        if (bestRect.size.width < bestRect.size.height) angle += 90;
+        const center = new cv.Point(bestRect.center.x, bestRect.center.y);
+        rotMat = cv.getRotationMatrix2D(center, angle, 1);
+        rotated = new cv.Mat();
+        const dsize = new cv.Size(src.cols, src.rows);
+        cv.warpAffine(src, rotated, rotMat, dsize, cv.INTER_LINEAR, cv.BORDER_CONSTANT, new cv.Scalar());
+
+        drawMinAreaRectOverlay(bestRect, view, dpr);
+
+        const radius = Math.max(2, Math.round(SAMPLE_RADIUS_MM * view.scale * dpr));
+        TRIANGLE_CENTERS.forEach(centerPt => {
+            const pos = mapCenterToCanvas(centerPt, view, dpr);
+            if (!pos) return;
+            const rotatedPos = applyAffine(rotMat, pos.x, pos.y);
+            const avg = averageCircleColor(rotated.data, rotated.cols, rotated.rows, rotatedPos.x, rotatedPos.y, radius);
+            const colorKey = classifyColor(avg);
+            if (colorKey) countsObject[colorKey] += 1;
+        });
+        return true;
+    } catch (err) {
+        console.warn('Deskew failed', err);
+        return false;
+    } finally {
+        if (src) src.delete();
+        if (gray) gray.delete();
+        if (blur) blur.delete();
+        if (edges) edges.delete();
+        if (contours) contours.delete();
+        if (hierarchy) hierarchy.delete();
+        if (rotated) rotated.delete();
+        if (rotMat) rotMat.delete();
+    }
 }
 
 function scanWithContourAlignment(counts) {
@@ -769,10 +857,10 @@ function startBoardStatusLoop() {
         if (isScanning) return;
         if (!el.video || !el.instructionText) return;
         if (!el.video.videoWidth || !el.video.videoHeight) return;
-        const result = detectBoardHomography();
-        const detected = Boolean(result && result.homography);
+        const result = detectBoardRectLive();
+        const detected = Boolean(result && result.rect);
         el.instructionText.textContent = detected ? 'Feld erkannt - SCAN' : 'Feld nicht erkannt - SCAN';
-        if (detected) drawBoardOverlay(result.homography, result.view);
+        if (detected) drawMinAreaRectOverlayScaled(result.rect, result.view, result.scale);
         else clearBoardOverlay();
     }, 350);
 }
@@ -881,6 +969,65 @@ function detectBoardHomography() {
     }
 }
 
+function detectBoardRectLive() {
+    if (!window.cv || !window.cvReady) return null;
+    const view = getViewBoxMetrics();
+    if (!view) return null;
+    const targetSize = 240;
+    sampleCanvas.width = targetSize;
+    sampleCanvas.height = targetSize;
+    sampleCtx.setTransform(1, 0, 0, 1, 0, 0);
+    drawVideoCover(sampleCtx, el.video, targetSize, targetSize);
+
+    let src = null;
+    let gray = null;
+    let blur = null;
+    let edges = null;
+    let contours = null;
+    let hierarchy = null;
+    try {
+        src = cv.imread(sampleCanvas);
+        gray = new cv.Mat();
+        blur = new cv.Mat();
+        edges = new cv.Mat();
+        contours = new cv.MatVector();
+        hierarchy = new cv.Mat();
+        cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+        cv.GaussianBlur(gray, blur, new cv.Size(5, 5), 0);
+        cv.Canny(blur, edges, 40, 120);
+        cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+        let bestRect = null;
+        let bestArea = 0;
+        for (let i = 0; i < contours.size(); i += 1) {
+            const cnt = contours.get(i);
+            const area = cv.contourArea(cnt);
+            if (area < 500) continue;
+            const rect = cv.minAreaRect(cnt);
+            const w = rect.size.width;
+            const h = rect.size.height;
+            if (!w || !h) continue;
+            const ratio = w > h ? w / h : h / w;
+            if (ratio > 1.25) continue;
+            if (area > bestArea) {
+                bestArea = area;
+                bestRect = rect;
+            }
+        }
+        if (!bestRect) return null;
+        return { rect: bestRect, view, scale: view.rect.width / targetSize };
+    } catch (err) {
+        return null;
+    } finally {
+        if (src) src.delete();
+        if (gray) gray.delete();
+        if (blur) blur.delete();
+        if (edges) edges.delete();
+        if (contours) contours.delete();
+        if (hierarchy) hierarchy.delete();
+    }
+}
+
 function drawBoardOverlay(homography, view) {
     if (!el.overlayCanvas || !homography || !view) return;
     const dpr = window.devicePixelRatio || 1;
@@ -919,6 +1066,62 @@ function clearBoardOverlay() {
     const ctx = el.overlayCanvas.getContext('2d');
     ctx.clearRect(0, 0, el.overlayCanvas.width, el.overlayCanvas.height);
     el.overlayCanvas.classList.remove('overlay-active');
+}
+
+function drawMinAreaRectOverlay(rect, view, dpr) {
+    if (!el.overlayCanvas || !rect || !view) return;
+    const width = Math.max(1, Math.round(view.rect.width * dpr));
+    const height = Math.max(1, Math.round(view.rect.height * dpr));
+    if (el.overlayCanvas.width !== width) el.overlayCanvas.width = width;
+    if (el.overlayCanvas.height !== height) el.overlayCanvas.height = height;
+    const ctx = el.overlayCanvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, view.rect.width, view.rect.height);
+    const points = cv.RotatedRect.points(rect);
+    ctx.strokeStyle = 'rgba(0, 255, 120, 0.8)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    points.forEach((p, idx) => {
+        const x = p.x / dpr;
+        const y = p.y / dpr;
+        if (idx === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+    });
+    ctx.closePath();
+    ctx.stroke();
+    el.overlayCanvas.classList.add('overlay-active');
+}
+
+function drawMinAreaRectOverlayScaled(rect, view, scale) {
+    if (!el.overlayCanvas || !rect || !view) return;
+    const dpr = window.devicePixelRatio || 1;
+    const width = Math.max(1, Math.round(view.rect.width * dpr));
+    const height = Math.max(1, Math.round(view.rect.height * dpr));
+    if (el.overlayCanvas.width !== width) el.overlayCanvas.width = width;
+    if (el.overlayCanvas.height !== height) el.overlayCanvas.height = height;
+    const ctx = el.overlayCanvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, view.rect.width, view.rect.height);
+    const points = cv.RotatedRect.points(rect);
+    ctx.strokeStyle = 'rgba(0, 255, 120, 0.8)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    points.forEach((p, idx) => {
+        const x = p.x * scale;
+        const y = p.y * scale;
+        if (idx === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+    });
+    ctx.closePath();
+    ctx.stroke();
+    el.overlayCanvas.classList.add('overlay-active');
+}
+
+function applyAffine(mat, x, y) {
+    const m = mat.data64F || mat.data32F;
+    const nx = m[0] * x + m[1] * y + m[2];
+    const ny = m[3] * x + m[4] * y + m[5];
+    return { x: nx, y: ny };
 }
 
 function applyHomography(H, x, y) {
