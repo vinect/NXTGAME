@@ -45,10 +45,10 @@
     <nav id="side-menu" class="glass-menu">
         <div class="menu-content">
             <h3>MEN&Uuml;</h3>
-            <button class="menu-item active" data-target="view-setup">Neue Runde</button>
-            <div class="menu-divider"></div>
+            <button class="menu-item menu-item-strong active" data-target="view-setup">Neue Runde</button>
             <button class="menu-item" data-target="view-history">Letzte Spiele</button>
             <button class="menu-item" data-target="view-instructions">Anleitung</button>
+            <div class="menu-divider"></div>
             <button class="menu-item" data-target="view-dice">Studi &auml;rgere dich nicht</button>
             <div class="menu-divider"></div>
             <button class="menu-item" data-target="view-insights">&Uuml;ber NXT</button>
@@ -132,33 +132,59 @@
     <!-- INSTRUCTIONS VIEW -->
     <section id="view-instructions" class="view view-scroll">
         <div class="content-padding">
-            <h2>ANLEITUNG</h2>
-            <div class="glass-card instruction-card">
-                <h3>So funktioniert's</h3>
-                <div class="instruction-step">
-                    <div class="step-number">1</div>
-                    <p>Richte die Kamera auf das Spielbrett, sodass es komplett sichtbar ist.</p>
-                </div>
-                <div class="instruction-step">
-                    <div class="step-number">2</div>
-                    <p>Warte, bis die <strong>wei&szlig;en Kreise</strong> auf den Pins erscheinen und t&uuml;rkis werden.</p>
-                </div>
-                <div class="instruction-step">
-                    <div class="step-number">3</div>
-                    <p>Dr&uuml;cke den <strong>SCAN-Button</strong>, wenn er leuchtet.</p>
-                </div>
-                <div class="instruction-step">
-                    <div class="step-number">4</div>
-                    <p>Das Ergebnis zeigt, wie viele Pins jeder Spieler hat.</p>
-                </div>
+            <h2>ConNXT</h2>
+            <div class="glass-card instruction-card connxt-instructions">
+                <div class="guide-tagline">STRETCH 4 TO SCORE!</div>
+                <h3 class="guide-title">SPIELANLEITUNG</h3>
+                <p class="guide-text"><strong>Spieleranzahl:</strong> 2 &ndash; 4</p>
+                <div class="guide-section-title">1. Vorbereitung</div>
+                <p class="guide-text">
+                    Jeder Spieler sucht sich eine Spielfigurenfarbe aus.<br>
+                    Klassisch: Der j&uuml;ngste Spieler darf beginnen. ODER: Scanne den QR-Code seitlich am Spiel, &ouml;ffne die App und lass den Zufall entscheiden.
+                </p>
+                <div class="guide-section-title">2. Spielbeginn</div>
+                <p class="guide-text">
+                    Der erste Spieler nimmt ein Gummiband und spannt dieses &uuml;ber die St&auml;be - ganz nach dem Prinzip &bdquo;Stretch 4 To Score&ldquo;.<br>
+                    WICHTIG: Das Gummiband muss immer &uuml;ber 4 St&auml;be hinweg gespannt werden (siehe Abbildung oben).<br>
+                    Der n&auml;chste Spieler spannt sein Gummiband nach dem gleichen Prinzip.<br>
+                    Bei mehr als 2 Spielern, wird im Uhrzeigersinn gespielt.<br>
+                    Das neu gezogene Gummiband, muss das vom letzten Spieler an einer Ecke ber&uuml;hren. (Abbildung)<br>
+                    TIPP: Um die Spieldauer zu verl&auml;ngern, k&ouml;nnen die Gummib&auml;nder auch an beliebigen Stellen des Spielbretts gespannt werden, ohne sich zu ber&uuml;hren.
+                </p>
+                <div class="guide-section-title">3. Wie werden Punkte gemacht?</div>
+                <p class="guide-text">
+                    Gelingt es einem Spieler mit dem Gummiband ein Dreieck auf dem Spielbrett zu formen, darf er dieses mit einer Spielfigur f&uuml;r sich beanspruchen. Diese wird daf&uuml;r in der Mitte des entstandenen Dreiecks platziert.<br>
+                    ACHTUNG: Es lohnt sich genau hinzuschauen, wie viele neue Dreiecke entstanden sind. &Uuml;bersehene Dreiecke k&ouml;nnen von dem Spieler beansprucht werden, der sie w&auml;hrend seines Zugs entdeckt.
+                </p>
+                <div class="guide-section-title">4. Wer hat gewonnen?</div>
+                <p class="guide-text">&ndash; Bei 2 Spielern: Der Spieler, der zuerst alle seine Figuren aufgebraucht hat.</p>
+                <p class="guide-text">&ndash; Bei 3 &ndash; 4 Spielern: Der Spieler, der die meisten Dreiecke f&uuml;r sich beansprucht hat.</p>
+                <p class="guide-text">TIPP: Hier hilft die App beim Ausz&auml;hlen und Ermitteln des Gewinners.</p>
+                <div class="guide-section-title">5. Ausgespielt?</div>
+                <p class="guide-text">
+                    Dreh das Spiel um und spiele mit dem W&uuml;rfel in der App eine Runde Studi-&auml;rgere-dich-nicht.
+                </p>
             </div>
-            <div class="glass-card instruction-card">
-                <h3>Tipps f&uuml;r beste Ergebnisse</h3>
-                <ul class="tips-list">
-                    <li>Gute Beleuchtung verwenden</li>
-                    <li>Brett flach und gerade halten</li>
-                    <li>Schatten vermeiden</li>
-                    <li>Kamera senkrecht &uuml;ber dem Brett</li>
+            <div class="glass-card instruction-card app-instructions">
+                <div class="guide-tagline">APP-GUIDE</div>
+                <h3 class="guide-title">SO FUNKTIONIERT DIE APP</h3>
+                <div class="guide-section-title">Kameranutzung</div>
+                <ul class="guide-list">
+                    <li>Brett flach legen und das gesamte Spielfeld im Rahmen halten.</li>
+                    <li>Gleichm&auml;&szlig;iges, helles Licht nutzen; Reflexe und Schatten vermeiden.</li>
+                    <li>Kamera m&ouml;glichst senkrecht &uuml;ber dem Brett halten.</li>
+                </ul>
+                <div class="guide-section-title">Auswertung des Spiels</div>
+                <ul class="guide-list">
+                    <li>Warte, bis die Markierungen sichtbar und t&uuml;rkis sind.</li>
+                    <li>Dr&uuml;cke <strong>SCAN</strong>, wenn der Button aktiv leuchtet.</li>
+                    <li>Das Ergebnis erscheint direkt im Ergebnisbereich.</li>
+                </ul>
+                <div class="guide-section-title">Neues Spiel &amp; weitere Funktionen</div>
+                <ul class="guide-list">
+                    <li>Nach dem Ergebnis kannst du eine neue Runde starten oder die Messung wiederholen.</li>
+                    <li>Im Bereich <strong>Letzte Spiele</strong> findest du Verlauf und Statistiken.</li>
+                    <li>Teilen &uuml;ber den QR-Code startet die native Teilen-Funktion.</li>
                 </ul>
             </div>
         </div>
@@ -192,18 +218,60 @@
     <!-- HISTORY VIEW -->
     <section id="view-history" class="view view-scroll">
         <div class="content-padding">
-            <div class="header-row">
-                <h2>LETZTE SPIELE</h2>
-                <button id="delete-btn" class="text-btn-danger">Leeren</button>
+            <div class="history-hero">
+                <div>
+                    <h2>SPIELVERLAUF &amp; STATISTIK</h2>
+                    <p class="history-subtitle">Deine letzten Spiele und Highlights im Blick.</p>
+                </div>
+                <button id="delete-btn" class="text-btn-danger">Verlauf leeren</button>
             </div>
-            <div id="stats-card" class="glass-card">
-                <h3>Statistiken</h3>
-                <div id="stats-content">
-                    <p class="empty-state">Noch keine Spieldaten</p>
+
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-label">Spiele gesamt</div>
+                    <div id="stats-total" class="stat-value">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Top Gewinner</div>
+                    <div id="stats-top" class="stat-value">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">&Oslash; Topscore</div>
+                    <div id="stats-avg" class="stat-value">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Letztes Spiel</div>
+                    <div id="stats-last" class="stat-value">-</div>
                 </div>
             </div>
-            <div id="history-list" class="glass-list">
-                <div class="empty-state">Keine Spiele gespeichert</div>
+
+            <div class="history-split">
+                <div class="glass-card stats-panel">
+                    <h3>Top Spieler</h3>
+                    <div id="stats-leaderboard" class="stats-list">
+                        <div class="empty-state">Noch keine Spieldaten</div>
+                    </div>
+                </div>
+                <div class="glass-card stats-panel">
+                    <h3>Aktuelle Serie</h3>
+                    <div id="stats-streak" class="stats-list">
+                        <div class="empty-state">Noch keine Spieldaten</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="history-section">
+                <div class="history-section-header">
+                    <h3>Letzte Spiele</h3>
+                    <div class="history-filters">
+                        <button class="history-chip active" data-range="all">Alles</button>
+                        <button class="history-chip" data-range="30">30 Tage</button>
+                        <button class="history-chip" data-range="7">7 Tage</button>
+                    </div>
+                </div>
+                <div id="history-list" class="history-list-modern">
+                    <div class="empty-state">Keine Spiele gespeichert</div>
+                </div>
             </div>
         </div>
     </section>

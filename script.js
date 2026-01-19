@@ -21,6 +21,7 @@ const COLORS = {
 };
 
 const HISTORY_KEY = 'nxt_games_v22';
+const HISTORY_CLEAR_KEY = 'nxt_games_cleared_v22';
 const VIEWBOX_SIZE = 300;
 const SAMPLE_RADIUS_MM = 5; // ~1cm Durchmesser
 const SAT_MIN = 45;
@@ -36,6 +37,7 @@ let diceRolling = false;
 let dicePos = { x: 0, y: 0 };
 let diceDrag = null;
 let diceSettleTimer = null;
+let historyRangeDays = 'all';
 
 const el = {};
 const sampleCanvas = document.createElement('canvas');
@@ -78,6 +80,13 @@ function initElements() {
     el.diceMover = document.getElementById('dice-mover');
     el.rollDiceBtn = document.getElementById('roll-dice-btn');
     el.shareQr = document.getElementById('share-qr');
+    el.historyFilters = document.querySelectorAll('.history-chip');
+    el.statsTotal = document.getElementById('stats-total');
+    el.statsTop = document.getElementById('stats-top');
+    el.statsAvg = document.getElementById('stats-avg');
+    el.statsLast = document.getElementById('stats-last');
+    el.statsLeaderboard = document.getElementById('stats-leaderboard');
+    el.statsStreak = document.getElementById('stats-streak');
     el.interestConsent = document.getElementById('interest-consent');
     el.interestSubmit = document.getElementById('interest-submit');
 }
@@ -159,6 +168,13 @@ function initEventListeners() {
             shareApp();
         }
     });
+    el.historyFilters?.forEach(btn => {
+        btn.addEventListener('click', () => {
+            historyRangeDays = btn.dataset.range || 'all';
+            el.historyFilters.forEach(b => b.classList.toggle('active', b === btn));
+            renderHistory();
+        });
+    });
     el.interestConsent?.addEventListener('change', updateInterestSubmitState);
     updateInterestSubmitState();
 }
@@ -169,6 +185,9 @@ function closeMenu() { el.sideMenu?.classList.remove('open'); el.menuOverlay?.cl
 function switchView(viewId) {
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active-view'));
     document.getElementById(viewId)?.classList.add('active-view');
+    document.querySelectorAll('.menu-item').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.target === viewId);
+    });
     if (el.homeBtn) {
         if (viewId === 'view-setup') el.homeBtn.classList.add('hidden');
         else el.homeBtn.classList.remove('hidden');
@@ -639,11 +658,14 @@ function retryScan() {
 function clearHistory() {
     if (confirm('L\u00f6schen?')) {
         localStorage.removeItem(HISTORY_KEY);
+        localStorage.removeItem('nxt_games_v21');
+        localStorage.setItem(HISTORY_CLEAR_KEY, '1');
         renderHistory();
     }
 }
 
 function loadHistory() {
+    if (localStorage.getItem(HISTORY_CLEAR_KEY) === '1') return [];
     let hist = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
     if (hist.length === 0) {
         const legacy = JSON.parse(localStorage.getItem('nxt_games_v21') || '[]');
@@ -659,14 +681,15 @@ function renderHistory() {
     const list = document.getElementById('history-list');
     if (!list) return;
     const hist = loadHistory();
+    const filtered = filterHistoryByRange(hist);
 
-    if (hist.length === 0) {
+    if (filtered.length === 0) {
         list.innerHTML = '<div class="empty-state">Keine Daten</div>';
         renderStats([]);
         return;
     }
 
-    list.innerHTML = hist.slice().reverse().map(h => {
+    list.innerHTML = filtered.slice().reverse().map(h => {
         const d = new Date(h.date).toLocaleDateString();
         return `
             <div class="history-item">
@@ -679,27 +702,87 @@ function renderHistory() {
         `;
     }).join('');
 
-    renderStats(hist);
+    renderStats(filtered);
 }
 
 function renderStats(hist) {
-    const stats = document.getElementById('stats-content');
-    if (!stats) return;
+    if (!el.statsTotal || !el.statsTop || !el.statsAvg || !el.statsLast || !el.statsLeaderboard || !el.statsStreak) return;
 
     if (!hist.length) {
-        stats.innerHTML = '<p class="empty-state">Noch keine Spieldaten</p>';
+        el.statsTotal.textContent = '0';
+        el.statsTop.textContent = '-';
+        el.statsAvg.textContent = '0';
+        el.statsLast.textContent = '-';
+        el.statsLeaderboard.innerHTML = '<div class="empty-state">Noch keine Spieldaten</div>';
+        el.statsStreak.innerHTML = '<div class="empty-state">Noch keine Spieldaten</div>';
         return;
     }
 
     const wins = {};
-    hist.forEach(h => { wins[h.winner] = (wins[h.winner] || 0) + 1; });
+    const topScores = [];
+    hist.forEach(h => {
+        wins[h.winner] = (wins[h.winner] || 0) + 1;
+        topScores.push(h.topScore || 0);
+    });
     const entries = Object.entries(wins).filter(([name]) => name !== '-');
     entries.sort((a, b) => b[1] - a[1]);
 
-    stats.innerHTML = `
-        <p><strong>Spiele:</strong> ${hist.length}</p>
-        <p><strong>Top Gewinner:</strong> ${entries[0] ? `${entries[0][0]} (${entries[0][1]})` : "-"}</p>
-    `;
+    const avgTop = Math.round(topScores.reduce((a, b) => a + b, 0) / topScores.length);
+    const lastGame = hist[hist.length - 1];
+
+    el.statsTotal.textContent = `${hist.length}`;
+    el.statsTop.textContent = entries[0] ? `${entries[0][0]} (${entries[0][1]})` : '-';
+    el.statsAvg.textContent = `${avgTop}`;
+    el.statsLast.textContent = lastGame ? new Date(lastGame.date).toLocaleDateString() : '-';
+
+    el.statsLeaderboard.innerHTML = entries.slice(0, 3).map(([name, count], idx) => `
+        <div class="stats-row">
+            <span>#${idx + 1} ${name}</span>
+            <strong>${count} Siege</strong>
+        </div>
+    `).join('') || '<div class="empty-state">Noch keine Spieldaten</div>';
+
+    const streak = getCurrentStreak(hist);
+    if (!streak) {
+        el.statsStreak.innerHTML = '<div class="empty-state">Keine Serie</div>';
+    } else {
+        el.statsStreak.innerHTML = `
+            <div class="stats-row">
+                <span>${streak.name}</span>
+                <strong>${streak.count} in Folge</strong>
+            </div>
+        `;
+    }
+}
+
+function filterHistoryByRange(hist) {
+    if (historyRangeDays === 'all') return hist;
+    const days = Number(historyRangeDays);
+    if (!days) return hist;
+    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+    return hist.filter(entry => {
+        const time = new Date(entry.date).getTime();
+        return Number.isFinite(time) && time >= cutoff;
+    });
+}
+
+function getCurrentStreak(hist) {
+    if (!hist.length) return null;
+    let count = 0;
+    let name = null;
+    for (let i = hist.length - 1; i >= 0; i -= 1) {
+        const winner = hist[i].winner;
+        if (!winner || winner === '-') break;
+        if (!name) {
+            name = winner;
+            count = 1;
+            continue;
+        }
+        if (winner === name) count += 1;
+        else break;
+    }
+    if (!name) return null;
+    return { name, count };
 }
 
 function checkInstallPrompt() {
