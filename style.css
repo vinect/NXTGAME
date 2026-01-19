@@ -672,4 +672,5 @@ h2#winner-msg { margin: 0 0 20px 0; color: var(--nxt-teal); text-align: center; 
 /* Share */
 .qr-display-wrapper { margin: 20px 0; display: flex; justify-content: center; }
 .static-qr { width: 180px; height: 180px; border-radius: 12px; border: 2px solid rgba(0, 155, 158, 0.15); box-shadow: 0 10px 25px rgba(0,0,0,0.12); }
+.static-qr[role="button"] { cursor: pointer; }
 .share-hint { color: var(--text-muted); text-align: center; }

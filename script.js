@@ -77,6 +77,7 @@ function initElements() {
     el.diceLane = document.getElementById('dice-lane');
     el.diceMover = document.getElementById('dice-mover');
     el.rollDiceBtn = document.getElementById('roll-dice-btn');
+    el.shareQr = document.getElementById('share-qr');
     el.interestConsent = document.getElementById('interest-consent');
     el.interestSubmit = document.getElementById('interest-submit');
 }
@@ -151,6 +152,13 @@ function initEventListeners() {
     window.addEventListener('pointermove', onDicePointerMove);
     window.addEventListener('pointerup', onDicePointerUp);
     window.addEventListener('pointercancel', onDicePointerUp);
+    el.shareQr?.addEventListener('click', shareApp);
+    el.shareQr?.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            shareApp();
+        }
+    });
     el.interestConsent?.addEventListener('change', updateInterestSubmitState);
     updateInterestSubmitState();
 }
@@ -242,6 +250,18 @@ function pickRandomStarter() {
 function updateInterestSubmitState() {
     if (!el.interestSubmit || !el.interestConsent) return;
     el.interestSubmit.disabled = !el.interestConsent.checked;
+}
+
+function shareApp() {
+    if (navigator.share) {
+        navigator.share({
+            title: 'NXT Game',
+            text: 'NXT Game App',
+            url: window.location.href
+        }).catch(() => {});
+        return;
+    }
+    alert('Teilen wird auf diesem Gerät nicht unterstützt.');
 }
 
 function initDice() {
