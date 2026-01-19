@@ -61,10 +61,6 @@ let alignmentLayout = null;
 let alignmentLoopId = null;
 let lastAlignmentSample = 0;
 let scanInProgress = false;
-let alignmentStableCount = 0;
-let alignmentLostCount = 0;
-let alignmentLocked = false;
-let lastOverlayUpdate = 0;
 
 const el = {};
 const sampleCanvas = document.createElement('canvas');
@@ -605,7 +601,6 @@ function scanWithAlignedSample(counts) {
     return true;
 }
 
-
 function averageCircleColor(data, width, height, cx, cy, radius, gains) {
     const gainR = gains?.r ?? 1;
     const gainG = gains?.g ?? 1;
@@ -664,7 +659,6 @@ function computeWhiteBalanceGains(data) {
         b: clampGain(gray / (avgB || 1)),
     };
 }
-
 
 function classifyColor(rgb) {
     const [h, s, v] = rgbToHsv(rgb);
@@ -743,7 +737,7 @@ function buildAlignmentLayout() {
     const rect = el.overlaySvg.getBoundingClientRect();
     if (!rect.width || !rect.height) return;
     const sizeBase = Math.min(rect.width, rect.height);
-    const maxSampleSize = 480;
+    const maxSampleSize = 360;
     const minSampleSize = 180;
     const scaleFactor = Math.min(1, maxSampleSize / sizeBase);
     const size = Math.max(minSampleSize, Math.round(sizeBase * scaleFactor));
@@ -790,8 +784,7 @@ function runAlignmentLoop(timestamp) {
     if (now - lastAlignmentSample < ALIGN_SAMPLE_INTERVAL) return;
     lastAlignmentSample = now;
     alignmentActive = detectAndWarpHex();
-    updateAlignmentState();
-    updateAlignmentOverlay(now);
+    updateAlignmentOverlay();
     updateScanReadyState();
 }
 
@@ -803,27 +796,10 @@ function updateScanReadyState() {
         setScanReady(true, 'Ausrichten und SCAN');
         return;
     }
-    if (alignmentLocked) {
+    if (alignmentActive) {
         setScanReady(true, 'Ausrichten und SCAN');
     } else {
         setScanReady(false, 'Board ausrichten...');
-    }
-}
-
-function updateAlignmentState() {
-    if (alignmentActive) {
-        alignmentStableCount += 1;
-        alignmentLostCount = 0;
-    } else {
-        alignmentLostCount += 1;
-        alignmentStableCount = 0;
-    }
-
-    if (!alignmentLocked && alignmentStableCount >= 3) {
-        alignmentLocked = true;
-    }
-    if (alignmentLocked && alignmentLostCount >= 2) {
-        alignmentLocked = false;
     }
 }
 
@@ -909,20 +885,16 @@ function clipHexPath(ctx, width, height) {
     ctx.clip();
 }
 
-function updateAlignmentOverlay(timestamp) {
+function updateAlignmentOverlay() {
     if (!el.overlayCanvas || !alignmentLayout) return;
     const ctx = el.overlayCanvas.getContext('2d');
     if (!ctx) return;
     const { rect } = alignmentLayout;
     ctx.clearRect(0, 0, rect.width, rect.height);
-    if (!alignmentLocked) {
+    if (!alignmentActive) {
         el.overlayCanvas.classList.remove('locked');
         return;
     }
-    if (timestamp && timestamp - lastOverlayUpdate < 220) {
-        return;
-    }
-    lastOverlayUpdate = timestamp || performance.now();
 
     ctx.save();
     clipHexPath(ctx, rect.width, rect.height);
