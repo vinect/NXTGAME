@@ -1192,18 +1192,25 @@ function showResults() {
     el.controlsSheet?.classList.remove('hidden');
     const ranked = [...players].sort((a, b) => b.score - a.score);
     const winner = ranked[0];
+    const topScore = winner.score;
+    const leaders = ranked.filter(p => p.score === topScore && topScore > 0);
+    const isTie = leaders.length > 1;
 
-    if (winner.score > 0) {
-        el.winnerMsg.textContent = `Gewinner: ${winner.name}`;
+    if (topScore > 0) {
+        const label = isTie ? 'Gleichstand' : 'Gewinner';
+        const names = leaders.map(p => p.name).join(leaders.length === 2 ? ' & ' : ', ');
+        el.winnerMsg.innerHTML = `<span class="winner-label">${label}:</span><span class="winner-value">${names}</span>`;
         if (typeof confetti === 'function') {
-            confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
+            if (!isTie) {
+                confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
+            }
         }
     } else {
         el.winnerMsg.textContent = 'Keine Steine erkannt';
     }
 
     el.scoreList.innerHTML = ranked.map((p, i) => `
-        <div class="rank-card ${i === 0 && p.score > 0 ? 'rank-1' : ''}">
+        <div class="rank-card ${i === 0 && p.score > 0 && !isTie ? 'rank-1' : ''}">
             <div class="rank-info">
                 <span class="rank-pos">${i + 1}</span>
                 <span class="rank-name">${p.name}</span>
@@ -1216,8 +1223,8 @@ function showResults() {
     let hist = loadHistory();
     hist.push({
         date: new Date().toISOString(),
-        winner: winner.score > 0 ? winner.name : '-',
-        topScore: winner.score,
+        winner: !isTie && topScore > 0 ? winner.name : '-',
+        topScore,
         details: players.map(p => `${p.name}:${p.score}`).join(', ')
     });
     if (hist.length > 50) hist = hist.slice(-50);

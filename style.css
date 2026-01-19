@@ -431,7 +431,17 @@ button, .lobby-card, .scan-btn, .icon-btn, .primary-btn {
 }
 .glass-sheet.hidden { transform: translateY(100%); }
 
-h2#winner-msg { margin: 0 0 20px 0; color: var(--nxt-teal); text-align: center; }
+h2#winner-msg {
+    margin: 0 0 20px 0;
+    color: var(--nxt-teal);
+    text-align: center;
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+.winner-label { font-weight: 700; }
+.winner-value { color: var(--text-dark); font-weight: 600; }
 
 .ranking-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
 .rank-card {
