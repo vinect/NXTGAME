@@ -48,7 +48,8 @@
             <button class="menu-item active" data-target="view-setup">Startseite</button>
             <button class="menu-item" data-target="view-share">Teilen</button>
             <button class="menu-item" data-target="view-instructions">Anleitung</button>
-            <button class="menu-item" data-target="view-history">Verlauf</button>
+            <button class="menu-item" data-target="view-dice">Würfel</button>
+            <button class="menu-item" data-target="view-history">Spielstatistik</button>
             <button class="menu-item" data-target="view-insights">Insights</button>
             <div class="menu-footer">NXT v21.0</div>
         </div>
@@ -161,12 +162,40 @@
         </div>
     </section>
 
+    <!-- DICE VIEW -->
+    <section id="view-dice" class="view view-scroll">
+        <div class="center-content">
+            <div class="glass-card dice-card">
+                <h2>WÜRFEL</h2>
+                <div class="dice-stage">
+                    <div id="dice" class="dice-3d value-1" role="img" aria-label="Würfel">
+                        <div class="cube">
+                            <div class="face face-1"></div>
+                            <div class="face face-2"></div>
+                            <div class="face face-3"></div>
+                            <div class="face face-4"></div>
+                            <div class="face face-5"></div>
+                            <div class="face face-6"></div>
+                        </div>
+                    </div>
+                </div>
+                <button id="roll-dice-btn" class="primary-btn big-btn">WÜRFELN</button>
+            </div>
+        </div>
+    </section>
+
     <!-- HISTORY VIEW -->
     <section id="view-history" class="view view-scroll">
         <div class="content-padding">
             <div class="header-row">
-                <h2>VERLAUF</h2>
+                <h2>SPIELSTATISTIK</h2>
                 <button id="delete-btn" class="text-btn-danger">Leeren</button>
+            </div>
+            <div id="stats-card" class="glass-card">
+                <h3>Statistiken</h3>
+                <div id="stats-content">
+                    <p class="empty-state">Noch keine Spieldaten</p>
+                </div>
             </div>
             <div id="history-list" class="glass-list">
                 <div class="empty-state">Keine Spiele gespeichert</div>
@@ -190,12 +219,6 @@
                 <input id="interest-email" class="text-input" type="email" inputmode="email" placeholder="name@beispiel.de" autocomplete="email">
                 <button class="primary-btn inline-btn" type="button">Interesse senden</button>
                 <p class="field-hint">Keine Weitergabe an Dritte. Nur für Studieninfos.</p>
-            </div>
-            <div id="stats-card" class="glass-card">
-                <h3>Statistiken</h3>
-                <div id="stats-content">
-                    <p class="empty-state">Noch keine Spieldaten</p>
-                </div>
             </div>
         </div>
     </section>

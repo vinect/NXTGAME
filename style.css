@@ -431,6 +431,114 @@ h2#winner-msg { margin: 0 0 20px 0; color: var(--nxt-teal); text-align: center; 
 }
 .tips-list { padding-left: 20px; color: var(--text-muted); line-height: 1.6; }
 
+/* --- DICE --- */
+.dice-card {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    text-align: center;
+}
+.dice-stage {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    margin: 10px 0;
+}
+.dice-3d {
+    width: 130px;
+    height: 130px;
+    perspective: 800px;
+}
+.cube {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    transform-style: preserve-3d;
+    transition: transform 0.35s cubic-bezier(0.2, 0.7, 0.2, 1.1);
+}
+.dice-3d.rolling .cube {
+    animation: diceSpin 0.8s linear infinite;
+}
+.face {
+    --pip-color: #0b1a1b;
+    --pip-size: 9px;
+    position: absolute;
+    inset: 0;
+    background-color: #ffffff;
+    border: 2px solid rgba(0, 155, 158, 0.25);
+    border-radius: 18px;
+    box-shadow: 0 16px 30px rgba(0, 0, 0, 0.12);
+    backface-visibility: hidden;
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
+}
+.face-1 {
+    transform: translateZ(65px);
+    background-image:
+        radial-gradient(circle at 50% 50%, var(--pip-color) 0 var(--pip-size), transparent calc(var(--pip-size) + 1px));
+}
+.face-2 {
+    transform: rotateX(90deg) translateZ(65px);
+    background-image:
+        radial-gradient(circle at 25% 25%, var(--pip-color) 0 var(--pip-size), transparent calc(var(--pip-size) + 1px)),
+        radial-gradient(circle at 75% 75%, var(--pip-color) 0 var(--pip-size), transparent calc(var(--pip-size) + 1px));
+}
+.face-3 {
+    transform: rotateY(90deg) translateZ(65px);
+    background-image:
+        radial-gradient(circle at 25% 25%, var(--pip-color) 0 var(--pip-size), transparent calc(var(--pip-size) + 1px)),
+        radial-gradient(circle at 50% 50%, var(--pip-color) 0 var(--pip-size), transparent calc(var(--pip-size) + 1px)),
+        radial-gradient(circle at 75% 75%, var(--pip-color) 0 var(--pip-size), transparent calc(var(--pip-size) + 1px));
+}
+.face-4 {
+    transform: rotateY(-90deg) translateZ(65px);
+    background-image:
+        radial-gradient(circle at 25% 25%, var(--pip-color) 0 var(--pip-size), transparent calc(var(--pip-size) + 1px)),
+        radial-gradient(circle at 75% 25%, var(--pip-color) 0 var(--pip-size), transparent calc(var(--pip-size) + 1px)),
+        radial-gradient(circle at 25% 75%, var(--pip-color) 0 var(--pip-size), transparent calc(var(--pip-size) + 1px)),
+        radial-gradient(circle at 75% 75%, var(--pip-color) 0 var(--pip-size), transparent calc(var(--pip-size) + 1px));
+}
+.face-5 {
+    transform: rotateX(-90deg) translateZ(65px);
+    background-image:
+        radial-gradient(circle at 25% 25%, var(--pip-color) 0 var(--pip-size), transparent calc(var(--pip-size) + 1px)),
+        radial-gradient(circle at 75% 25%, var(--pip-color) 0 var(--pip-size), transparent calc(var(--pip-size) + 1px)),
+        radial-gradient(circle at 50% 50%, var(--pip-color) 0 var(--pip-size), transparent calc(var(--pip-size) + 1px)),
+        radial-gradient(circle at 25% 75%, var(--pip-color) 0 var(--pip-size), transparent calc(var(--pip-size) + 1px)),
+        radial-gradient(circle at 75% 75%, var(--pip-color) 0 var(--pip-size), transparent calc(var(--pip-size) + 1px));
+}
+.face-6 {
+    transform: rotateY(180deg) translateZ(65px);
+    background-image:
+        radial-gradient(circle at 25% 25%, var(--pip-color) 0 var(--pip-size), transparent calc(var(--pip-size) + 1px)),
+        radial-gradient(circle at 25% 50%, var(--pip-color) 0 var(--pip-size), transparent calc(var(--pip-size) + 1px)),
+        radial-gradient(circle at 25% 75%, var(--pip-color) 0 var(--pip-size), transparent calc(var(--pip-size) + 1px)),
+        radial-gradient(circle at 75% 25%, var(--pip-color) 0 var(--pip-size), transparent calc(var(--pip-size) + 1px)),
+        radial-gradient(circle at 75% 50%, var(--pip-color) 0 var(--pip-size), transparent calc(var(--pip-size) + 1px)),
+        radial-gradient(circle at 75% 75%, var(--pip-color) 0 var(--pip-size), transparent calc(var(--pip-size) + 1px));
+}
+.dice-3d.value-1 .cube { transform: rotateX(0deg) rotateY(0deg); }
+.dice-3d.value-2 .cube { transform: rotateX(-90deg) rotateY(0deg); }
+.dice-3d.value-3 .cube { transform: rotateX(0deg) rotateY(-90deg); }
+.dice-3d.value-4 .cube { transform: rotateX(0deg) rotateY(90deg); }
+.dice-3d.value-5 .cube { transform: rotateX(90deg) rotateY(0deg); }
+.dice-3d.value-6 .cube { transform: rotateX(0deg) rotateY(180deg); }
+@keyframes diceShake {
+    0% { transform: rotate(0deg) scale(1); }
+    25% { transform: rotate(6deg) scale(1.04); }
+    50% { transform: rotate(0deg) scale(0.98); }
+    75% { transform: rotate(-6deg) scale(1.02); }
+    100% { transform: rotate(0deg) scale(1); }
+}
+@keyframes diceSpin {
+    0% { transform: rotateX(0deg) rotateY(0deg); }
+    25% { transform: rotateX(90deg) rotateY(180deg); }
+    50% { transform: rotateX(180deg) rotateY(90deg); }
+    75% { transform: rotateX(270deg) rotateY(270deg); }
+    100% { transform: rotateX(360deg) rotateY(360deg); }
+}
+
 /* --- UTILITIES --- */
 .hidden { display: none !important; }
 .text-btn { background: none; border: none; color: var(--text-muted); text-decoration: underline; width: 100%; padding: 10px; margin-top: 5px; }

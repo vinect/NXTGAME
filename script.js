@@ -32,6 +32,7 @@ let players = [
 ];
 
 let stream = null;
+let diceRolling = false;
 
 const el = {};
 const sampleCanvas = document.createElement('canvas');
@@ -41,6 +42,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initElements();
     initSvgGrid();
     initEventListeners();
+    initDice();
     enforceUniqueColors();
     renderPlayers();
     renderHistory();
@@ -68,6 +70,8 @@ function initElements() {
     el.menuOverlay = document.getElementById('side-menu-overlay');
     el.randomResult = document.getElementById('random-result');
     el.installModal = document.getElementById('install-modal');
+    el.dice = document.getElementById('dice');
+    el.rollDiceBtn = document.getElementById('roll-dice-btn');
 }
 
 function initSvgGrid() {
@@ -135,6 +139,7 @@ function initEventListeners() {
     document.getElementById('delete-btn')?.addEventListener('click', clearHistory);
     document.getElementById('install-dismiss-btn')?.addEventListener('click', () => el.installModal?.classList.add('hidden'));
     document.getElementById('close-install')?.addEventListener('click', () => el.installModal?.classList.add('hidden'));
+    document.getElementById('roll-dice-btn')?.addEventListener('click', rollDice);
 }
 
 function toggleMenu() { el.sideMenu?.classList.toggle('open'); el.menuOverlay?.classList.toggle('open'); }
@@ -219,6 +224,32 @@ function pickRandomStarter() {
     const r = players[Math.floor(Math.random() * players.length)];
     el.randomResult.textContent = `${r.name} startet!`;
     el.randomResult.classList.remove('hidden');
+}
+
+function initDice() {
+    if (!el.dice) return;
+    setDiceValue(1);
+}
+
+function setDiceValue(value) {
+    if (!el.dice) return;
+    el.dice.classList.remove('value-1', 'value-2', 'value-3', 'value-4', 'value-5', 'value-6');
+    el.dice.classList.add(`value-${value}`);
+}
+
+function rollDice() {
+    if (!el.dice || diceRolling) return;
+    diceRolling = true;
+    el.rollDiceBtn.disabled = true;
+    el.dice.classList.add('rolling');
+
+    setTimeout(() => {
+        const finalValue = Math.floor(Math.random() * 6) + 1;
+        setDiceValue(finalValue);
+        el.dice.classList.remove('rolling');
+        el.rollDiceBtn.disabled = false;
+        diceRolling = false;
+    }, 1000);
 }
 
 async function startCamera() {
