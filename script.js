@@ -92,6 +92,7 @@ function initElements() {
     el.instructionText = document.getElementById('instruction-text');
     el.gridOverlay = document.querySelector('.hex-grid-overlay');
     el.overlaySvg = document.querySelector('.hex-grid-overlay');
+    el.overlayCanvas = document.getElementById('overlay-canvas');
     el.cameraWrapper = document.querySelector('.camera-wrapper');
     el.gridLines = document.getElementById('grid-lines');
     el.pinGroup = document.getElementById('pin-template-group');
@@ -446,6 +447,10 @@ async function startCamera() {
             video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
             audio: false
         });
+        const track = stream.getVideoTracks()[0];
+        if (track) {
+            await configureCamera(track);
+        }
         el.video.srcObject = stream;
         el.video.onloadedmetadata = () => {
             el.video.play();
@@ -568,12 +573,13 @@ function scanWithStaticOverlay(counts) {
     staticCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
     drawVideoCover(staticCtx, el.video, view.rect.width, view.rect.height);
     const frame = staticCtx.getImageData(0, 0, staticCanvas.width, staticCanvas.height);
+    const gains = computeWhiteBalanceGains(frame.data);
 
     const radius = Math.max(2, Math.round(SAMPLE_RADIUS_MM * view.scale * dpr));
     TRIANGLE_CENTERS.forEach(center => {
         const pos = mapCenterToCanvas(center, view, dpr);
         if (!pos) return;
-        const avg = averageCircleColor(frame.data, staticCanvas.width, staticCanvas.height, pos.x, pos.y, radius);
+        const avg = averageCircleColor(frame.data, staticCanvas.width, staticCanvas.height, pos.x, pos.y, radius, gains);
         const colorKey = classifyColor(avg);
         if (colorKey) counts[colorKey] += 1;
     });
@@ -582,19 +588,23 @@ function scanWithStaticOverlay(counts) {
 function scanWithAlignedSample(counts) {
     if (!sampleCanvas.width || !sampleCanvas.height) return false;
     const frame = sampleCtx.getImageData(0, 0, sampleCanvas.width, sampleCanvas.height);
+    const gains = computeWhiteBalanceGains(frame.data);
     const scale = sampleCanvas.width / VIEWBOX_SIZE;
     const radius = Math.max(2, Math.round(SAMPLE_RADIUS_MM * scale));
     TRIANGLE_CENTERS.forEach(center => {
         const pos = mapViewBoxToSample(center);
         if (!pos) return;
-        const avg = averageCircleColor(frame.data, sampleCanvas.width, sampleCanvas.height, pos.x, pos.y, radius);
+        const avg = averageCircleColor(frame.data, sampleCanvas.width, sampleCanvas.height, pos.x, pos.y, radius, gains);
         const colorKey = classifyColor(avg);
         if (colorKey) counts[colorKey] += 1;
     });
     return true;
 }
 
-function averageCircleColor(data, width, height, cx, cy, radius) {
+function averageCircleColor(data, width, height, cx, cy, radius, gains) {
+    const gainR = gains?.r ?? 1;
+    const gainG = gains?.g ?? 1;
+    const gainB = gains?.b ?? 1;
     let sumR = 0;
     let sumG = 0;
     let sumB = 0;
@@ -607,17 +617,46 @@ function averageCircleColor(data, width, height, cx, cy, radius) {
             const y = Math.round(cy + dy);
             if (x < 0 || y < 0 || x >= width || y >= height) continue;
             const idx = (y * width + x) * 4;
-            sumR += data[idx];
-            sumG += data[idx + 1];
-            sumB += data[idx + 2];
+            sumR += data[idx] * gainR;
+            sumG += data[idx + 1] * gainG;
+            sumB += data[idx + 2] * gainB;
             count += 1;
         }
     }
     if (!count) return { r: 0, g: 0, b: 0 };
     return {
-        r: Math.round(sumR / count),
-        g: Math.round(sumG / count),
-        b: Math.round(sumB / count),
+        r: clampChannel(sumR / count),
+        g: clampChannel(sumG / count),
+        b: clampChannel(sumB / count),
+    };
+}
+
+function clampChannel(value) {
+    return Math.min(255, Math.max(0, Math.round(value)));
+}
+
+function computeWhiteBalanceGains(data) {
+    let sumR = 0;
+    let sumG = 0;
+    let sumB = 0;
+    let count = 0;
+    const stride = 16;
+    for (let i = 0; i < data.length; i += stride) {
+        sumR += data[i];
+        sumG += data[i + 1];
+        sumB += data[i + 2];
+        count += 1;
+    }
+    if (!count) return { r: 1, g: 1, b: 1 };
+    const avgR = sumR / count;
+    const avgG = sumG / count;
+    const avgB = sumB / count;
+    const gray = (avgR + avgG + avgB) / 3;
+    const clampGain = (value) => Math.min(1.4, Math.max(0.6, value));
+    return {
+        r: clampGain(gray / (avgR || 1)),
+        g: clampGain(gray / (avgG || 1)),
+        b: clampGain(gray / (avgB || 1)),
     };
 }
 
@@ -707,7 +746,16 @@ function buildAlignmentLayout() {
     cvInputCanvas.width = size;
     cvInputCanvas.height = size;
     sampleCtx.setTransform(1, 0, 0, 1, 0, 0);
-    alignmentLayout = { size };
+    const dpr = window.devicePixelRatio || 1;
+    if (el.overlayCanvas) {
+        el.overlayCanvas.width = Math.max(1, Math.round(rect.width * dpr));
+        el.overlayCanvas.height = Math.max(1, Math.round(rect.height * dpr));
+        const overlayCtx = el.overlayCanvas.getContext('2d');
+        if (overlayCtx) {
+            overlayCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        }
+    }
+    alignmentLayout = { size, rect };
 }
 
 function startAlignmentLoop() {
@@ -719,6 +767,13 @@ function stopAlignmentLoop() {
     if (!alignmentLoopId) return;
     cancelAnimationFrame(alignmentLoopId);
     alignmentLoopId = null;
+    if (el.overlayCanvas) {
+        const ctx = el.overlayCanvas.getContext('2d');
+        if (ctx && alignmentLayout?.rect) {
+            ctx.clearRect(0, 0, alignmentLayout.rect.width, alignmentLayout.rect.height);
+        }
+        el.overlayCanvas.classList.remove('locked');
+    }
 }
 
 function runAlignmentLoop(timestamp) {
@@ -729,6 +784,7 @@ function runAlignmentLoop(timestamp) {
     if (now - lastAlignmentSample < ALIGN_SAMPLE_INTERVAL) return;
     lastAlignmentSample = now;
     alignmentActive = detectAndWarpHex();
+    updateAlignmentOverlay();
     updateScanReadyState();
 }
 
@@ -744,6 +800,32 @@ function updateScanReadyState() {
         setScanReady(true, 'Ausrichten und SCAN');
     } else {
         setScanReady(false, 'Board ausrichten...');
+    }
+}
+
+async function configureCamera(track) {
+    if (!track?.getCapabilities || !track.applyConstraints) return;
+    const caps = track.getCapabilities();
+    const advanced = [];
+
+    if (caps.exposureMode?.includes('continuous')) {
+        advanced.push({ exposureMode: 'continuous' });
+    }
+    if (caps.whiteBalanceMode?.includes('continuous')) {
+        advanced.push({ whiteBalanceMode: 'continuous' });
+    }
+    if (caps.focusMode?.includes('continuous')) {
+        advanced.push({ focusMode: 'continuous' });
+    }
+    if (caps.focusMode?.includes('auto')) {
+        advanced.push({ focusMode: 'auto' });
+    }
+
+    if (!advanced.length) return;
+    try {
+        await track.applyConstraints({ advanced });
+    } catch (err) {
+        console.warn('Camera constraints failed', err);
     }
 }
 
@@ -791,43 +873,51 @@ function orderHexPoints(contour) {
     return points.slice(topIndex).concat(points.slice(0, topIndex));
 }
 
-function detectAndWarpHex() {
-    if (!cvReady || !alignmentLayout || !el.video || !el.video.videoWidth) {
-        return false;
+function clipHexPath(ctx, width, height) {
+    ctx.beginPath();
+    HEX_POINTS.forEach(([x, y], index) => {
+        const px = x * width;
+        const py = y * height;
+        if (index === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+    });
+    ctx.closePath();
+    ctx.clip();
+}
+
+function updateAlignmentOverlay() {
+    if (!el.overlayCanvas || !alignmentLayout) return;
+    const ctx = el.overlayCanvas.getContext('2d');
+    if (!ctx) return;
+    const { rect } = alignmentLayout;
+    ctx.clearRect(0, 0, rect.width, rect.height);
+    if (!alignmentActive) {
+        el.overlayCanvas.classList.remove('locked');
+        return;
     }
 
-    drawVideoCover(cvInputCtx, el.video, cvInputCanvas.width, cvInputCanvas.height);
+    ctx.save();
+    clipHexPath(ctx, rect.width, rect.height);
+    ctx.drawImage(sampleCanvas, 0, 0, rect.width, rect.height);
+    ctx.restore();
+    el.overlayCanvas.classList.add('locked');
+}
 
-    const src = cv.imread(cvInputCanvas);
-    const gray = new cv.Mat();
-    const grayEq = new cv.Mat();
-    const blurred = new cv.Mat();
-    const edges = new cv.Mat();
+function findBestHexFromBinary(binaryMat, minArea) {
     const contours = new cv.MatVector();
     const hierarchy = new cv.Mat();
     let bestApprox = null;
     let bestArea = 0;
-    let aligned = false;
 
     try {
-        cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-        cv.equalizeHist(gray, grayEq);
-        cv.GaussianBlur(
-            grayEq,
-            blurred,
-            new cv.Size(DETECTION.blurSize, DETECTION.blurSize),
-            0
-        );
-        cv.Canny(blurred, edges, DETECTION.cannyLow, DETECTION.cannyHigh);
         cv.findContours(
-            edges,
+            binaryMat,
             contours,
             hierarchy,
             cv.RETR_EXTERNAL,
             cv.CHAIN_APPROX_SIMPLE
         );
 
-        const minArea = cvInputCanvas.width * cvInputCanvas.height * DETECTION.minAreaRatio;
         for (let i = 0; i < contours.size(); i += 1) {
             const contour = contours.get(i);
             const area = cv.contourArea(contour);
@@ -855,6 +945,60 @@ function detectAndWarpHex() {
             }
 
             contour.delete();
+        }
+    } finally {
+        contours.delete();
+        hierarchy.delete();
+    }
+
+    return { bestApprox, bestArea };
+}
+
+function detectAndWarpHex() {
+    if (!cvReady || !alignmentLayout || !el.video || !el.video.videoWidth) {
+        return false;
+    }
+
+    drawVideoCover(cvInputCtx, el.video, cvInputCanvas.width, cvInputCanvas.height);
+
+    const src = cv.imread(cvInputCanvas);
+    const gray = new cv.Mat();
+    const grayEq = new cv.Mat();
+    const blurred = new cv.Mat();
+    const edges = new cv.Mat();
+    const thresh = new cv.Mat();
+    const morphed = new cv.Mat();
+    const kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(3, 3));
+    let bestApprox = null;
+    let aligned = false;
+
+    try {
+        cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+        cv.equalizeHist(gray, grayEq);
+        cv.GaussianBlur(
+            grayEq,
+            blurred,
+            new cv.Size(DETECTION.blurSize, DETECTION.blurSize),
+            0
+        );
+        cv.Canny(blurred, edges, DETECTION.cannyLow, DETECTION.cannyHigh);
+        const minArea = cvInputCanvas.width * cvInputCanvas.height * DETECTION.minAreaRatio;
+        const edgeResult = findBestHexFromBinary(edges, minArea);
+        bestApprox = edgeResult.bestApprox;
+
+        if (!bestApprox) {
+            cv.adaptiveThreshold(
+                grayEq,
+                thresh,
+                255,
+                cv.ADAPTIVE_THRESH_GAUSSIAN_C,
+                cv.THRESH_BINARY,
+                21,
+                7
+            );
+            cv.morphologyEx(thresh, morphed, cv.MORPH_CLOSE, kernel);
+            const threshResult = findBestHexFromBinary(morphed, minArea);
+            bestApprox = threshResult.bestApprox;
         }
 
         if (!bestApprox) {
@@ -909,8 +1053,9 @@ function detectAndWarpHex() {
         grayEq.delete();
         blurred.delete();
         edges.delete();
-        contours.delete();
-        hierarchy.delete();
+        thresh.delete();
+        morphed.delete();
+        kernel.delete();
         if (bestApprox) {
             bestApprox.delete();
         }
