@@ -43,6 +43,11 @@ const DETECTION = {
     approxEpsilon: 0.02,
     minAreaRatio: 0.125,
 };
+const MULTI_SHOT = {
+    count: 3,
+    delayMs: 140,
+    stride: 6,
+};
 const ALIGN_SAMPLE_INTERVAL = 160;
 let players = [
     { name: 'Spieler 1', colorKey: 'magenta', score: 0 },
@@ -486,7 +491,7 @@ function setScanReady(ready, message) {
     if (ready) el.gridOverlay?.classList.add('ready'); else el.gridOverlay?.classList.remove('ready');
 }
 
-function triggerScan() {
+async function triggerScan() {
     if (el.scanBtn.disabled) return;
     if (!el.overlaySvg || !el.cameraWrapper) {
         initElements();
@@ -506,14 +511,20 @@ function triggerScan() {
         const counts = Object.keys(COLORS).reduce((acc, key) => ({ ...acc, [key]: 0 }), {});
         let usedAlignment = false;
         if (cvReady) {
-            alignmentActive = detectAndWarpHex();
+            const alignedResult = await captureBestAlignedSample();
+            alignmentActive = alignedResult.aligned;
             updateScanReadyState();
             if (alignmentActive) {
                 usedAlignment = scanWithAlignedSample(counts);
             }
         }
         if (!usedAlignment) {
-            scanWithStaticOverlay(counts);
+            const bestStatic = await captureBestStaticFrame();
+            if (bestStatic) {
+                scanWithStaticFrameData(counts, bestStatic.frame, bestStatic.view, bestStatic.dpr);
+            } else {
+                scanWithStaticOverlay(counts);
+            }
         }
 
         players.forEach(p => {
@@ -580,6 +591,18 @@ function scanWithStaticOverlay(counts) {
         const pos = mapCenterToCanvas(center, view, dpr);
         if (!pos) return;
         const avg = averageCircleColor(frame.data, staticCanvas.width, staticCanvas.height, pos.x, pos.y, radius, gains);
+        const colorKey = classifyColor(avg);
+        if (colorKey) counts[colorKey] += 1;
+    });
+}
+
+function scanWithStaticFrameData(counts, frame, view, dpr) {
+    const gains = computeWhiteBalanceGains(frame.data);
+    const radius = Math.max(2, Math.round(SAMPLE_RADIUS_MM * view.scale * dpr));
+    TRIANGLE_CENTERS.forEach(center => {
+        const pos = mapCenterToCanvas(center, view, dpr);
+        if (!pos) return;
+        const avg = averageCircleColor(frame.data, frame.width, frame.height, pos.x, pos.y, radius, gains);
         const colorKey = classifyColor(avg);
         if (colorKey) counts[colorKey] += 1;
     });
@@ -801,6 +824,107 @@ function updateScanReadyState() {
     } else {
         setScanReady(false, 'Board ausrichten...');
     }
+}
+
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function scoreFrameQuality(data, width, height) {
+    const stride = MULTI_SHOT.stride;
+    let sum = 0;
+    let sumSq = 0;
+    let gradSum = 0;
+    let colorSum = 0;
+    let count = 0;
+
+    for (let y = stride; y < height - stride; y += stride) {
+        for (let x = stride; x < width - stride; x += stride) {
+            const idx = (y * width + x) * 4;
+            const r = data[idx];
+            const g = data[idx + 1];
+            const b = data[idx + 2];
+            const luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+
+            const idxR = (y * width + (x + stride)) * 4;
+            const idxD = ((y + stride) * width + x) * 4;
+            const rR = data[idxR];
+            const gR = data[idxR + 1];
+            const bR = data[idxR + 2];
+            const rD = data[idxD];
+            const gD = data[idxD + 1];
+            const bD = data[idxD + 2];
+            const lumaR = 0.2126 * rR + 0.7152 * gR + 0.0722 * bR;
+            const lumaD = 0.2126 * rD + 0.7152 * gD + 0.0722 * bD;
+
+            sum += luma;
+            sumSq += luma * luma;
+            gradSum += Math.abs(luma - lumaR) + Math.abs(luma - lumaD);
+            colorSum += Math.max(r, g, b) - Math.min(r, g, b);
+            count += 1;
+        }
+    }
+
+    if (!count) return -Infinity;
+    const mean = sum / count;
+    const variance = Math.max(0, sumSq / count - mean * mean);
+    const contrast = Math.sqrt(variance);
+    const sharpness = gradSum / count;
+    const colorfulness = colorSum / count;
+    const exposureScore = 255 - Math.abs(mean - 128);
+
+    return sharpness * 1.2 + contrast * 0.8 + colorfulness * 0.5 + exposureScore * 0.6;
+}
+
+async function captureBestAlignedSample() {
+    if (!cvReady || !sampleCanvas.width || !sampleCanvas.height) {
+        return { aligned: false };
+    }
+
+    let bestFrame = null;
+    let bestScore = -Infinity;
+    for (let i = 0; i < MULTI_SHOT.count; i += 1) {
+        if (i > 0) await sleep(MULTI_SHOT.delayMs);
+        const aligned = detectAndWarpHex();
+        if (!aligned) continue;
+        const frame = sampleCtx.getImageData(0, 0, sampleCanvas.width, sampleCanvas.height);
+        const score = scoreFrameQuality(frame.data, sampleCanvas.width, sampleCanvas.height);
+        if (score > bestScore) {
+            bestScore = score;
+            bestFrame = frame;
+        }
+    }
+
+    if (!bestFrame) return { aligned: false };
+    sampleCtx.putImageData(bestFrame, 0, 0);
+    return { aligned: true };
+}
+
+async function captureBestStaticFrame() {
+    const view = getViewBoxMetrics();
+    if (!view || !el.video) return null;
+    const dpr = window.devicePixelRatio || 1;
+    const canvasWidth = Math.max(1, Math.round(view.rect.width * dpr));
+    const canvasHeight = Math.max(1, Math.round(view.rect.height * dpr));
+    staticCanvas.width = canvasWidth;
+    staticCanvas.height = canvasHeight;
+    staticCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    let bestFrame = null;
+    let bestScore = -Infinity;
+    for (let i = 0; i < MULTI_SHOT.count; i += 1) {
+        if (i > 0) await sleep(MULTI_SHOT.delayMs);
+        drawVideoCover(staticCtx, el.video, view.rect.width, view.rect.height);
+        const frame = staticCtx.getImageData(0, 0, staticCanvas.width, staticCanvas.height);
+        const score = scoreFrameQuality(frame.data, staticCanvas.width, staticCanvas.height);
+        if (score > bestScore) {
+            bestScore = score;
+            bestFrame = frame;
+        }
+    }
+
+    if (!bestFrame) return null;
+    return { frame: bestFrame, view, dpr };
 }
 
 async function configureCamera(track) {
