@@ -16,9 +16,10 @@ const PIN_GRID = [
 const COLORS = {
     magenta: { name: 'Magenta', hex: '#E91E63', hsvLow: [135, 60, 60], hsvHigh: [175, 255, 255] },
     yellow:  { name: 'Gelb',    hex: '#FFEB3B', hsvLow: [15, 80, 80],  hsvHigh: [40, 255, 255] },
-    blue:    { name: 'Blau',    hex: '#2196F3', hsvLow: [95, 80, 60],  hsvHigh: [130, 255, 255] },
-    green:   { name: 'Gr\u00fcn',    hex: '#4CAF50', hsvLow: [40, 60, 50],  hsvHigh: [85, 255, 255] }
+    blue:    { name: 'Blau',    hex: '#2196F3', hsvLow: [90, 80, 60],  hsvHigh: [130, 255, 255] },
+    green:   { name: 'Gr\u00fcn',    hex: '#4CAF50', hsvLow: [40, 60, 50],  hsvHigh: [100, 255, 255] }
 };
+const COLOR_ORDER = ['magenta', 'yellow', 'green', 'blue'];
 
 const HISTORY_KEY = 'nxt_games_v22';
 const HISTORY_CLEAR_KEY = 'nxt_games_cleared_v22';
@@ -686,7 +687,7 @@ function computeWhiteBalanceGains(data) {
 function classifyColor(rgb) {
     const [h, s, v] = rgbToHsv(rgb);
     if (s < SAT_MIN || v < VAL_MIN) return null;
-    return Object.keys(COLORS).find(key => hsvInRange(h, s, v, COLORS[key].hsvLow, COLORS[key].hsvHigh)) || null;
+    return COLOR_ORDER.find(key => hsvInRange(h, s, v, COLORS[key].hsvLow, COLORS[key].hsvHigh)) || null;
 }
 
 function rgbToHsv({ r, g, b }) {
