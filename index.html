@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="de">
 <head>
     <meta charset="UTF-8">
@@ -31,7 +31,7 @@
                     <polyline points="9 22 9 12 15 12 15 22"></polyline>
                 </svg>
             </button>
-            <button id="menu-btn" class="icon-btn" aria-label="Menü öffnen">
+            <button id="menu-btn" class="icon-btn" aria-label="Men&uuml; &ouml;ffnen">
                 <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none">
                     <line x1="3" y1="12" x2="21" y2="12"></line>
                     <line x1="3" y1="6" x2="21" y2="6"></line>
@@ -44,13 +44,15 @@
     <div id="side-menu-overlay" class="menu-overlay"></div>
     <nav id="side-menu" class="glass-menu">
         <div class="menu-content">
-            <h3>MENÜ</h3>
-            <button class="menu-item active" data-target="view-setup">Startseite</button>
-            <button class="menu-item" data-target="view-share">Teilen</button>
+            <h3>MEN&Uuml;</h3>
+            <button class="menu-item active" data-target="view-setup">Neue Runde</button>
+            <div class="menu-divider"></div>
+            <button class="menu-item" data-target="view-history">Letzte Spiele</button>
             <button class="menu-item" data-target="view-instructions">Anleitung</button>
-            <button class="menu-item" data-target="view-dice">Würfel</button>
-            <button class="menu-item" data-target="view-history">Spielstatistik</button>
-            <button class="menu-item" data-target="view-insights">Insights</button>
+            <button class="menu-item" data-target="view-dice">Studi &auml;rgere dich nicht</button>
+            <div class="menu-divider"></div>
+            <button class="menu-item" data-target="view-insights">&Uuml;ber NXT</button>
+            <button class="menu-item" data-target="view-share">App teilen</button>
             <div class="menu-footer">NXT v21.0</div>
         </div>
     </nav>
@@ -70,7 +72,7 @@
                 </div>
                 <div id="players-container" class="players-list"></div>
                 <div class="random-starter-section">
-                    <button id="random-start-btn" class="secondary-btn">Wer fängt an?</button>
+                    <button id="random-start-btn" class="secondary-btn">Wer f&auml;ngt an?</button>
                     <div id="random-result" class="random-result hidden"></div>
                 </div>
                 <button id="start-game-btn" class="primary-btn big-btn">STARTEN</button>
@@ -122,7 +124,7 @@
                 <div class="qr-display-wrapper">
                     <img src="qrcode.png" alt="QR Code" class="static-qr" onerror="this.parentElement.innerHTML='<p>qrcode.png fehlt</p>'">
                 </div>
-                <p class="share-hint">Scannen zum Öffnen</p>
+                <p class="share-hint">Scannen zum &Ouml;ffnen</p>
             </div>
         </div>
     </section>
@@ -139,11 +141,11 @@
                 </div>
                 <div class="instruction-step">
                     <div class="step-number">2</div>
-                    <p>Warte, bis die <strong>weißen Kreise</strong> auf den Pins erscheinen und türkis werden.</p>
+                    <p>Warte, bis die <strong>wei&szlig;en Kreise</strong> auf den Pins erscheinen und t&uuml;rkis werden.</p>
                 </div>
                 <div class="instruction-step">
                     <div class="step-number">3</div>
-                    <p>Drücke den <strong>SCAN-Button</strong>, wenn er leuchtet.</p>
+                    <p>Dr&uuml;cke den <strong>SCAN-Button</strong>, wenn er leuchtet.</p>
                 </div>
                 <div class="instruction-step">
                     <div class="step-number">4</div>
@@ -151,12 +153,12 @@
                 </div>
             </div>
             <div class="glass-card instruction-card">
-                <h3>Tipps für beste Ergebnisse</h3>
+                <h3>Tipps f&uuml;r beste Ergebnisse</h3>
                 <ul class="tips-list">
                     <li>Gute Beleuchtung verwenden</li>
                     <li>Brett flach und gerade halten</li>
                     <li>Schatten vermeiden</li>
-                    <li>Kamera senkrecht über dem Brett</li>
+                    <li>Kamera senkrecht &uuml;ber dem Brett</li>
                 </ul>
             </div>
         </div>
@@ -166,20 +168,23 @@
     <section id="view-dice" class="view view-scroll">
         <div class="center-content">
             <div class="glass-card dice-card">
-                <h2>WÜRFEL</h2>
-                <div class="dice-stage">
-                    <div id="dice" class="dice-3d value-1" role="img" aria-label="Würfel">
-                        <div class="cube">
-                            <div class="face face-1"></div>
-                            <div class="face face-2"></div>
-                            <div class="face face-3"></div>
-                            <div class="face face-4"></div>
-                            <div class="face face-5"></div>
-                            <div class="face face-6"></div>
+                <h2>STUDI &Auml;RGERE DICH NICHT</h2>
+                <p class="dice-subtitle">W&uuml;rfel</p>
+                <div id="dice-lane" class="dice-stage">
+                    <div id="dice-mover" class="dice-mover">
+                        <div id="dice" class="dice-3d value-1" role="img" aria-label="W&uuml;rfel">
+                            <div class="cube">
+                                <div class="face face-1"></div>
+                                <div class="face face-2"></div>
+                                <div class="face face-3"></div>
+                                <div class="face face-4"></div>
+                                <div class="face face-5"></div>
+                                <div class="face face-6"></div>
+                            </div>
                         </div>
                     </div>
                 </div>
-                <button id="roll-dice-btn" class="primary-btn big-btn">WÜRFELN</button>
+                <button id="roll-dice-btn" class="primary-btn big-btn">W&Uuml;RFELN</button>
             </div>
         </div>
     </section>
@@ -188,7 +193,7 @@
     <section id="view-history" class="view view-scroll">
         <div class="content-padding">
             <div class="header-row">
-                <h2>SPIELSTATISTIK</h2>
+                <h2>LETZTE SPIELE</h2>
                 <button id="delete-btn" class="text-btn-danger">Leeren</button>
             </div>
             <div id="stats-card" class="glass-card">
@@ -206,15 +211,15 @@
     <!-- INSIGHTS VIEW -->
     <section id="view-insights" class="view view-scroll">
         <div class="content-padding">
-            <h2>INSIGHTS</h2>
+            <h2>&Uuml;BER NXT</h2>
             <div class="glass-card highlight-card">
-                <h3>Fakultät NXT</h3>
+                <h3>Fakult&auml;t NXT</h3>
                 <p>Nachhaltigkeit und Technologie an der Hochschule Reutlingen</p>
-                <a href="https://www.nxt.reutlingen-university.de/" target="_blank" rel="noopener" class="link-btn">Zur Website →</a>
+                <a href="https://www.nxt.reutlingen-university.de/" target="_blank" rel="noopener" class="link-btn">Zur Website &rarr;</a>
             </div>
             <div class="glass-card interest-card">
                 <h3>Studieninteresse</h3>
-                <p>Hinterlasse deine E-Mail, wenn du Infos zum Studium an der NXT Reutlingen möchtest.</p>
+                <p>Hinterlasse deine E-Mail, wenn du Infos zum Studium an der NXT Reutlingen m&ouml;chtest.</p>
                 <label class="field-label" for="interest-email">E-Mail</label>
                 <input id="interest-email" class="text-input" type="email" inputmode="email" placeholder="name@beispiel.de" autocomplete="email">
                 <label class="consent-row">
@@ -223,7 +228,7 @@
                 </label>
                 <button id="interest-submit" class="primary-btn inline-btn" type="button" disabled>Interesse senden</button>
                 <p class="privacy-hint">Datenschutzhinweis: Verantwortlich ist die Fakult&auml;t NXT der Hochschule Reutlingen. Weitere Infos zur Datenverarbeitung: <a class="link-btn" href="#" target="_blank" rel="noopener">Datenschutzerkl&auml;rung</a>.</p>
-                <p class="field-hint">Keine Weitergabe an Dritte. Nur für Studieninfos.</p>
+                <p class="field-hint">Keine Weitergabe an Dritte. Nur f&uuml;r Studieninfos.</p>
             </div>
         </div>
     </section>
@@ -231,8 +236,8 @@
     <!-- INSTALL MODAL -->
     <div id="install-modal" class="install-modal hidden">
         <div class="install-content glass-card">
-            <button id="close-install" class="close-icon-btn" aria-label="Schließen">×</button>
-            <div class="install-icon">📲</div>
+            <button id="close-install" class="close-icon-btn" aria-label="Schlie&szlig;en">X</button>
+            <div class="install-icon">APP</div>
             <h3>App installieren</h3>
             <div id="install-instructions"></div>
             <button id="install-dismiss-btn" class="primary-btn">Verstanden</button>
@@ -242,3 +247,7 @@
     <script src="script.js"></script>
 </body>
 </html>
+
+
+
+

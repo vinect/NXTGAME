@@ -1,4 +1,4 @@
-/**
+﻿/**
  * NXT Game Scanner v22.2
  * Manual scan: average color in triangle centers
  */
@@ -17,7 +17,7 @@ const COLORS = {
     magenta: { name: 'Magenta', hex: '#E91E63', hsvLow: [135, 60, 60], hsvHigh: [175, 255, 255] },
     yellow:  { name: 'Gelb',    hex: '#FFEB3B', hsvLow: [15, 80, 80],  hsvHigh: [40, 255, 255] },
     blue:    { name: 'Blau',    hex: '#2196F3', hsvLow: [95, 80, 60],  hsvHigh: [130, 255, 255] },
-    green:   { name: 'Grün',    hex: '#4CAF50', hsvLow: [40, 60, 50],  hsvHigh: [85, 255, 255] }
+    green:   { name: 'Gr\u00fcn',    hex: '#4CAF50', hsvLow: [40, 60, 50],  hsvHigh: [85, 255, 255] }
 };
 
 const HISTORY_KEY = 'nxt_games_v22';
@@ -33,6 +33,9 @@ let players = [
 
 let stream = null;
 let diceRolling = false;
+let dicePos = { x: 0, y: 0 };
+let diceDrag = null;
+let diceSettleTimer = null;
 
 const el = {};
 const sampleCanvas = document.createElement('canvas');
@@ -71,6 +74,8 @@ function initElements() {
     el.randomResult = document.getElementById('random-result');
     el.installModal = document.getElementById('install-modal');
     el.dice = document.getElementById('dice');
+    el.diceLane = document.getElementById('dice-lane');
+    el.diceMover = document.getElementById('dice-mover');
     el.rollDiceBtn = document.getElementById('roll-dice-btn');
     el.interestConsent = document.getElementById('interest-consent');
     el.interestSubmit = document.getElementById('interest-submit');
@@ -142,6 +147,10 @@ function initEventListeners() {
     document.getElementById('install-dismiss-btn')?.addEventListener('click', () => el.installModal?.classList.add('hidden'));
     document.getElementById('close-install')?.addEventListener('click', () => el.installModal?.classList.add('hidden'));
     document.getElementById('roll-dice-btn')?.addEventListener('click', rollDice);
+    el.dice?.addEventListener('pointerdown', onDicePointerDown);
+    window.addEventListener('pointermove', onDicePointerMove);
+    window.addEventListener('pointerup', onDicePointerUp);
+    window.addEventListener('pointercancel', onDicePointerUp);
     el.interestConsent?.addEventListener('change', updateInterestSubmitState);
     updateInterestSubmitState();
 }
@@ -246,19 +255,108 @@ function setDiceValue(value) {
     el.dice.classList.add(`value-${value}`);
 }
 
+function setDiceOffset(x, y) {
+    dicePos = { x, y };
+    if (!el.diceMover) return;
+    el.diceMover.style.setProperty('--dice-x', `${x}px`);
+    el.diceMover.style.setProperty('--dice-y', `${y}px`);
+}
+
+function clamp(value, min, max) {
+    return Math.min(max, Math.max(min, value));
+}
+
+function getDiceLimits() {
+    if (!el.diceLane || !el.dice) return null;
+    const lane = el.diceLane.getBoundingClientRect();
+    const diceRect = el.dice.getBoundingClientRect();
+    if (!lane.width || !lane.height || !diceRect.width || !diceRect.height) return null;
+    const maxX = Math.max(0, (lane.width - diceRect.width) / 2);
+    const maxY = Math.max(0, (lane.height - diceRect.height) / 2);
+    return { minX: -maxX, maxX, minY: -maxY, maxY };
+}
+
+function beginDiceRoll() {
+    if (!el.dice) return;
+    diceRolling = true;
+    if (el.rollDiceBtn) el.rollDiceBtn.disabled = true;
+    el.dice.classList.add('rolling');
+}
+
+function finishDiceRoll() {
+    const finalValue = Math.floor(Math.random() * 6) + 1;
+    setDiceValue(finalValue);
+    if (el.dice) el.dice.classList.remove('rolling');
+    if (el.rollDiceBtn) el.rollDiceBtn.disabled = false;
+    diceRolling = false;
+}
+
 function rollDice() {
     if (!el.dice || diceRolling) return;
-    diceRolling = true;
-    el.rollDiceBtn.disabled = true;
-    el.dice.classList.add('rolling');
+    beginDiceRoll();
 
     setTimeout(() => {
-        const finalValue = Math.floor(Math.random() * 6) + 1;
-        setDiceValue(finalValue);
-        el.dice.classList.remove('rolling');
-        el.rollDiceBtn.disabled = false;
-        diceRolling = false;
+        finishDiceRoll();
     }, 1000);
+}
+
+function onDicePointerDown(event) {
+    if (!el.dice || !el.diceMover || diceRolling) return;
+    const limits = getDiceLimits();
+    if (!limits) return;
+    beginDiceRoll();
+    el.diceMover.classList.add('dragging');
+    el.dice.setPointerCapture(event.pointerId);
+    diceDrag = {
+        id: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        baseX: dicePos.x,
+        baseY: dicePos.y,
+        lastX: event.clientX,
+        lastY: event.clientY,
+        lastT: performance.now(),
+        vx: 0,
+        vy: 0,
+    };
+}
+
+function onDicePointerMove(event) {
+    if (!diceDrag || event.pointerId !== diceDrag.id) return;
+    const limits = getDiceLimits();
+    if (!limits) return;
+    const dx = event.clientX - diceDrag.startX;
+    const dy = event.clientY - diceDrag.startY;
+    const nextX = clamp(diceDrag.baseX + dx, limits.minX, limits.maxX);
+    const nextY = clamp(diceDrag.baseY + dy, limits.minY, limits.maxY);
+    setDiceOffset(nextX, nextY);
+
+    const now = performance.now();
+    const dt = Math.max(16, now - diceDrag.lastT);
+    diceDrag.vx = (event.clientX - diceDrag.lastX) / dt;
+    diceDrag.vy = (event.clientY - diceDrag.lastY) / dt;
+    diceDrag.lastX = event.clientX;
+    diceDrag.lastY = event.clientY;
+    diceDrag.lastT = now;
+    event.preventDefault();
+}
+
+function onDicePointerUp(event) {
+    if (!diceDrag || event.pointerId !== diceDrag.id) return;
+    if (el.dice) el.dice.releasePointerCapture(event.pointerId);
+    if (el.diceMover) el.diceMover.classList.remove('dragging');
+    const limits = getDiceLimits();
+    if (limits) {
+        const fling = 240;
+        const targetX = clamp(dicePos.x + diceDrag.vx * fling, limits.minX, limits.maxX);
+        const targetY = clamp(dicePos.y + diceDrag.vy * fling, limits.minY, limits.maxY);
+        setDiceOffset(targetX, targetY);
+    }
+    clearTimeout(diceSettleTimer);
+    diceSettleTimer = setTimeout(() => {
+        finishDiceRoll();
+    }, 450);
+    diceDrag = null;
 }
 
 async function startCamera() {
@@ -482,7 +580,7 @@ function showResults() {
     const winner = ranked[0];
 
     if (winner.score > 0) {
-        el.winnerMsg.textContent = `🏆 ${winner.name} gewinnt!`;
+        el.winnerMsg.textContent = `Gewinner: ${winner.name}`;
         if (typeof confetti === 'function') {
             confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
         }
@@ -519,7 +617,7 @@ function retryScan() {
 }
 
 function clearHistory() {
-    if (confirm('Löschen?')) {
+    if (confirm('L\u00f6schen?')) {
         localStorage.removeItem(HISTORY_KEY);
         renderHistory();
     }
@@ -553,7 +651,7 @@ function renderHistory() {
         return `
             <div class="history-item">
                 <div>
-                    <div class="hist-winner">🏆 ${h.winner} (${h.topScore})</div>
+                    <div class="hist-winner">Gewinner: ${h.winner} (${h.topScore})</div>
                     <div style="font-size:0.8rem;color:#6f8b8d">${h.details}</div>
                 </div>
                 <div style="font-size:0.8rem;color:#6f8b8d">${d}</div>
@@ -580,7 +678,7 @@ function renderStats(hist) {
 
     stats.innerHTML = `
         <p><strong>Spiele:</strong> ${hist.length}</p>
-        <p><strong>Top Gewinner:</strong> ${entries[0] ? `${entries[0][0]} (${entries[0][1]})` : '—'}</p>
+        <p><strong>Top Gewinner:</strong> ${entries[0] ? `${entries[0][0]} (${entries[0][1]})` : "-"}</p>
     `;
 }
 
@@ -596,7 +694,7 @@ function checkInstallPrompt() {
     };
 
     if (isIOS) show(`1. Tippe auf <span class="step-icon icon-ios-share"></span><br>2. "Zum Home-Bildschirm"`);
-    else if (isAndroid) show(`1. Tippe auf Menü<br>2. "App installieren"`);
+    else if (isAndroid) show(`1. Tippe auf Men\u00fc<br>2. "App installieren"`);
 }
 
 function registerServiceWorker() {
