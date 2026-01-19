@@ -23,27 +23,27 @@ const COLORS = {
 const HISTORY_KEY = 'nxt_games_v22';
 const HISTORY_CLEAR_KEY = 'nxt_games_cleared_v22';
 const VIEWBOX_SIZE = 300;
+const VIEWBOX_HALF = VIEWBOX_SIZE / 2;
 const SAMPLE_RADIUS_MM = 5; // ~1cm Durchmesser
 const SAT_MIN = 45;
 const VAL_MIN = 45;
 const TRIANGLE_CENTERS = buildTriangleCenters(PIN_GRID);
-let GRID_CONNECTIONS = null;
-const WARP_SIZE = VIEWBOX_SIZE;
 const HEX_POINTS = [
-    [0.25, 0.0],
-    [0.75, 0.0],
-    [1.0, 0.5],
-    [0.75, 1.0],
-    [0.25, 1.0],
-    [0.0, 0.5],
+    [0.5, 0.033333],
+    [0.904133, 0.266667],
+    [0.904133, 0.733333],
+    [0.5, 0.966667],
+    [0.095867, 0.733333],
+    [0.095867, 0.266667],
 ];
-const DETECTION_HEX = {
-    cannyLow: 60,
-    cannyHigh: 160,
+const DETECTION = {
+    cannyLow: 40,
+    cannyHigh: 120,
     blurSize: 5,
     approxEpsilon: 0.02,
-    minAreaRatio: 0.12,
+    minAreaRatio: 0.125,
 };
+const ALIGN_SAMPLE_INTERVAL = 160;
 let players = [
     { name: 'Spieler 1', colorKey: 'magenta', score: 0 },
     { name: 'Spieler 2', colorKey: 'yellow', score: 0 }
@@ -55,28 +55,35 @@ let dicePos = { x: 0, y: 0 };
 let diceDrag = null;
 let diceSettleTimer = null;
 let historyRangeDays = 'all';
-let boardTemplateContour = null;
-let boardTemplateReady = false;
-let boardStatusTimer = null;
-let isScanning = false;
-let boardStreak = 0;
-let boardLastHomography = null;
+let cvReady = false;
+let alignmentActive = false;
+let alignmentLayout = null;
+let alignmentLoopId = null;
+let lastAlignmentSample = 0;
+let scanInProgress = false;
 
 const el = {};
 const sampleCanvas = document.createElement('canvas');
 const sampleCtx = sampleCanvas.getContext('2d', { willReadFrequently: true });
+const staticCanvas = document.createElement('canvas');
+const staticCtx = staticCanvas.getContext('2d', { willReadFrequently: true });
+const cvInputCanvas = document.createElement('canvas');
+const cvInputCtx = cvInputCanvas.getContext('2d', { willReadFrequently: true });
 
 document.addEventListener('DOMContentLoaded', () => {
     initElements();
     initSvgGrid();
     initEventListeners();
     initDice();
-    initBoardTemplateWatcher();
     enforceUniqueColors();
     renderPlayers();
     renderHistory();
     checkInstallPrompt();
     registerServiceWorker();
+    initOpenCv();
+    buildAlignmentLayout();
+    window.addEventListener('resize', buildAlignmentLayout);
+    window.addEventListener('orientationchange', buildAlignmentLayout);
 });
 
 function initElements() {
@@ -95,7 +102,6 @@ function initElements() {
     el.winnerMsg = document.getElementById('winner-msg');
     el.playersContainer = document.getElementById('players-container');
     el.playerCountDisplay = document.getElementById('player-count-display');
-    el.overlayCanvas = document.getElementById('overlay-canvas');
     el.sideMenu = document.getElementById('side-menu');
     el.menuOverlay = document.getElementById('side-menu-overlay');
     el.randomResult = document.getElementById('random-result');
@@ -116,13 +122,24 @@ function initElements() {
     el.interestSubmit = document.getElementById('interest-submit');
 }
 
+function initOpenCv() {
+    waitForOpenCv().then((ready) => {
+        cvReady = ready;
+        if (!cvReady) {
+            if (!scanInProgress) setScanReady(true, 'OpenCV nicht verf\u00fcgbar');
+            return;
+        }
+        updateScanReadyState();
+    });
+}
+
 function initSvgGrid() {
     if (!el.pinGroup || !el.gridLines) return;
     el.pinGroup.innerHTML = '';
     el.gridLines.innerHTML = '';
 
-    GRID_CONNECTIONS = buildGridConnections(PIN_GRID);
-    GRID_CONNECTIONS.forEach(([a, b]) => {
+    const connections = buildGridConnections(PIN_GRID);
+    connections.forEach(([a, b]) => {
         const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
         line.setAttribute('x1', a.x);
         line.setAttribute('y1', a.y);
@@ -219,12 +236,8 @@ function switchView(viewId) {
     }
     if (viewId === 'view-game') {
         requestAnimationFrame(() => startCamera());
-        startBoardStatusLoop();
     }
-    else {
-        stopCamera();
-        stopBoardStatusLoop();
-    }
+    else stopCamera();
 }
 
 function addPlayer() {
@@ -315,44 +328,6 @@ function shareApp() {
 function initDice() {
     if (!el.dice) return;
     setDiceValue(1);
-}
-
-function initBoardTemplateWatcher() {
-    const timer = setInterval(() => {
-        if (!window.cvReady || !window.cv) return;
-        if (!boardTemplateReady) initBoardTemplate();
-        if (boardTemplateReady) clearInterval(timer);
-    }, 250);
-}
-
-function initBoardTemplate() {
-    if (boardTemplateReady || !window.cvReady || !window.cv) return;
-    const r = 100;
-    const cx = 150;
-    const cy = 150;
-    const pts = [];
-    for (let i = 0; i < 6; i += 1) {
-        const theta = (i * 60 * Math.PI) / 180;
-        const x = cx + r * Math.sin(theta);
-        const y = cy - r * Math.cos(theta);
-        pts.push(x, y);
-    }
-    boardTemplateContour = cv.matFromArray(6, 1, cv.CV_32SC2, pts);
-    boardTemplateReady = true;
-}
-
-function getHexPointsForSize(size) {
-    const r = size * (140 / 300);
-    const cx = size / 2;
-    const cy = size / 2;
-    return [
-        { x: cx, y: cy - r },
-        { x: cx + 121.24, y: cy - 70 },
-        { x: cx + 121.24, y: cy + 70 },
-        { x: cx, y: cy + r },
-        { x: cx - 121.24, y: cy + 70 },
-        { x: cx - 121.24, y: cy - 70 }
-    ];
 }
 
 function setDiceValue(value) {
@@ -475,6 +450,8 @@ async function startCamera() {
         el.video.onloadedmetadata = () => {
             el.video.play();
             resetGameUI();
+            buildAlignmentLayout();
+            startAlignmentLoop();
         };
     } catch (err) {
         console.error(err);
@@ -487,13 +464,14 @@ function stopCamera() {
         stream.getTracks().forEach(t => t.stop());
         stream = null;
     }
+    stopAlignmentLoop();
 }
 
 function resetGameUI() {
     el.controlsSheet?.classList.add('hidden');
     el.canvas.style.display = 'none';
     el.video.style.display = 'block';
-    setScanReady(true, 'Ausrichten und SCAN');
+    updateScanReadyState();
 }
 
 function setScanReady(ready, message) {
@@ -516,14 +494,22 @@ function triggerScan() {
         setScanReady(true, 'Kamera nicht bereit');
         return;
     }
-    isScanning = true;
+    scanInProgress = true;
     el.instructionText.textContent = 'Analysiere...';
 
     try {
         const counts = Object.keys(COLORS).reduce((acc, key) => ({ ...acc, [key]: 0 }), {});
-        const usedDeskew = detectAndDeskewBoard(el.video, counts);
-        const usedCv = usedDeskew || scanWithContourAlignment(counts);
-        if (!usedCv) scanWithStaticOverlay(counts);
+        let usedAlignment = false;
+        if (cvReady) {
+            alignmentActive = detectAndWarpHex();
+            updateScanReadyState();
+            if (alignmentActive) {
+                usedAlignment = scanWithAlignedSample(counts);
+            }
+        }
+        if (!usedAlignment) {
+            scanWithStaticOverlay(counts);
+        }
 
         players.forEach(p => {
             p.score = counts[p.colorKey] || 0;
@@ -537,10 +523,10 @@ function triggerScan() {
     } finally {
         el.video.style.display = 'block';
         el.canvas.style.display = 'none';
-        isScanning = false;
+        scanInProgress = false;
     }
 
-    setScanReady(true, 'Ausrichten und SCAN');
+    updateScanReadyState();
 }
 
 function getViewBoxMetrics() {
@@ -561,6 +547,7 @@ function mapCenterToCanvas(center, view, dpr) {
 }
 
 function drawVideoCover(ctx, video, width, height) {
+    if (!video.videoWidth || !video.videoHeight) return;
     const scale = Math.max(width / video.videoWidth, height / video.videoHeight);
     const drawW = video.videoWidth * scale;
     const drawH = video.videoHeight * scale;
@@ -576,642 +563,35 @@ function scanWithStaticOverlay(counts) {
     const dpr = window.devicePixelRatio || 1;
     const canvasWidth = Math.max(1, Math.round(view.rect.width * dpr));
     const canvasHeight = Math.max(1, Math.round(view.rect.height * dpr));
-    sampleCanvas.width = canvasWidth;
-    sampleCanvas.height = canvasHeight;
-    sampleCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    drawVideoCover(sampleCtx, el.video, view.rect.width, view.rect.height);
-    const frame = sampleCtx.getImageData(0, 0, sampleCanvas.width, sampleCanvas.height);
+    staticCanvas.width = canvasWidth;
+    staticCanvas.height = canvasHeight;
+    staticCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    drawVideoCover(staticCtx, el.video, view.rect.width, view.rect.height);
+    const frame = staticCtx.getImageData(0, 0, staticCanvas.width, staticCanvas.height);
 
     const radius = Math.max(2, Math.round(SAMPLE_RADIUS_MM * view.scale * dpr));
     TRIANGLE_CENTERS.forEach(center => {
         const pos = mapCenterToCanvas(center, view, dpr);
         if (!pos) return;
-        const avg = averageCircleColor(frame.data, sampleCanvas.width, sampleCanvas.height, pos.x, pos.y, radius);
+        const avg = averageCircleColor(frame.data, staticCanvas.width, staticCanvas.height, pos.x, pos.y, radius);
         const colorKey = classifyColor(avg);
         if (colorKey) counts[colorKey] += 1;
     });
 }
 
-function detectAndDeskewBoard(videoElement, countsObject) {
-    if (!window.cv || !window.cvReady) return false;
-    const view = getViewBoxMetrics();
-    if (!view) return false;
-    const result = detectHexHomography(videoElement, view, 360);
-    if (!result || !result.homography) return false;
-
-    const dpr = window.devicePixelRatio || 1;
-    const canvasWidth = Math.max(1, Math.round(view.rect.width * dpr));
-    const canvasHeight = Math.max(1, Math.round(view.rect.height * dpr));
-    sampleCanvas.width = canvasWidth;
-    sampleCanvas.height = canvasHeight;
-    sampleCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    drawVideoCover(sampleCtx, videoElement, view.rect.width, view.rect.height);
+function scanWithAlignedSample(counts) {
+    if (!sampleCanvas.width || !sampleCanvas.height) return false;
     const frame = sampleCtx.getImageData(0, 0, sampleCanvas.width, sampleCanvas.height);
-
-    const radius = Math.max(2, Math.round(SAMPLE_RADIUS_MM * view.scale * dpr));
+    const scale = sampleCanvas.width / VIEWBOX_SIZE;
+    const radius = Math.max(2, Math.round(SAMPLE_RADIUS_MM * scale));
     TRIANGLE_CENTERS.forEach(center => {
-        const pos = applyHomography(result.homography, center.x + WARP_SIZE / 2, center.y + WARP_SIZE / 2);
+        const pos = mapViewBoxToSample(center);
         if (!pos) return;
-        const avg = averageCircleColor(frame.data, sampleCanvas.width, sampleCanvas.height, pos.x * dpr, pos.y * dpr, radius);
+        const avg = averageCircleColor(frame.data, sampleCanvas.width, sampleCanvas.height, pos.x, pos.y, radius);
         const colorKey = classifyColor(avg);
-        if (colorKey) countsObject[colorKey] += 1;
+        if (colorKey) counts[colorKey] += 1;
     });
     return true;
-}
-
-function scanWithContourAlignment(counts) {
-    if (!window.cv || !window.cvReady) return false;
-    const view = getViewBoxMetrics();
-    if (!view) return false;
-    const dpr = window.devicePixelRatio || 1;
-    const canvasWidth = Math.max(1, Math.round(view.rect.width * dpr));
-    const canvasHeight = Math.max(1, Math.round(view.rect.height * dpr));
-    sampleCanvas.width = canvasWidth;
-    sampleCanvas.height = canvasHeight;
-    sampleCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    drawVideoCover(sampleCtx, el.video, view.rect.width, view.rect.height);
-
-    let src = null;
-    let gray = null;
-    let blur = null;
-    let edges = null;
-    let thresh = null;
-    let closed = null;
-    let contours = null;
-    let hierarchy = null;
-    let approx = null;
-    let hull = null;
-    let warped = null;
-    let homography = null;
-    let srcMat = null;
-    let dstMat = null;
-
-    try {
-        src = cv.imread(sampleCanvas);
-        gray = new cv.Mat();
-        blur = new cv.Mat();
-        edges = new cv.Mat();
-        contours = new cv.MatVector();
-        hierarchy = new cv.Mat();
-
-        cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-        cv.GaussianBlur(gray, blur, new cv.Size(5, 5), 0);
-        cv.Canny(blur, edges, 60, 120);
-        cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-
-    let bestContour = null;
-    let bestArea = 0;
-    let bestScore = Number.POSITIVE_INFINITY;
-    for (let i = 0; i < contours.size(); i += 1) {
-        const cnt = contours.get(i);
-        const area = cv.contourArea(cnt);
-        if (area < 2000) continue;
-        const hull = new cv.Mat();
-        cv.convexHull(cnt, hull, false, true);
-        if (!cv.isContourConvex(hull)) {
-            hull.delete();
-            continue;
-        }
-        const approxHull = approxToHex(hull);
-        const polyCount = approxHull ? approxHull.rows : 0;
-        if (polyCount < 5 || polyCount > 8) {
-            if (approxHull) approxHull.delete();
-            hull.delete();
-            continue;
-        }
-        const centerScore = cv.pointPolygonTest(hull, new cv.Point(view.rect.width * 0.5, view.rect.height * 0.5), false);
-        if (centerScore < 0) {
-            if (approxHull) approxHull.delete();
-            hull.delete();
-            continue;
-        }
-        let shapeScore = 0;
-        if (boardTemplateReady && boardTemplateContour) {
-            shapeScore = cv.matchShapes(hull, boardTemplateContour, cv.CONTOURS_MATCH_I1, 0);
-        } else {
-            shapeScore = Math.abs(polyCount - 6);
-        }
-        const score = shapeScore + (1 / Math.max(area, 1)) * 100000;
-        if (score < bestScore) {
-            bestScore = score;
-            bestArea = area;
-            if (bestContour) bestContour.delete();
-            bestContour = hull;
-        } else {
-            hull.delete();
-        }
-        if (approxHull) approxHull.delete();
-    }
-    if (!bestContour || bestArea < 2000) return false;
-
-    const peri = cv.arcLength(bestContour, true);
-    approx = new cv.Mat();
-    cv.approxPolyDP(bestContour, approx, 0.02 * peri, true);
-
-    if (approx.rows !== 6) {
-        const refined = approxToHex(bestContour);
-        if (refined) {
-            approx.delete();
-            approx = refined;
-        }
-    }
-    if (approx.rows !== 6) return false;
-
-        const srcPoints = extractContourPoints(approx);
-        const orderedSrc = orderPointsClockwise(srcPoints);
-        const dstPoints = getHexDestinationPoints();
-
-        srcMat = cv.matFromArray(6, 1, cv.CV_32FC2, flattenPoints(orderedSrc));
-        dstMat = cv.matFromArray(6, 1, cv.CV_32FC2, flattenPoints(dstPoints));
-        homography = cv.findHomography(srcMat, dstMat);
-        if (!homography || homography.empty()) return false;
-
-        warped = new cv.Mat();
-        cv.warpPerspective(src, warped, homography, new cv.Size(WARP_SIZE, WARP_SIZE));
-
-        const radius = 5;
-        TRIANGLE_CENTERS.forEach(center => {
-            const x = center.x + WARP_SIZE / 2;
-            const y = center.y + WARP_SIZE / 2;
-            const avg = averageCircleColor(warped.data, warped.cols, warped.rows, x, y, radius);
-            const colorKey = classifyColor(avg);
-            if (colorKey) counts[colorKey] += 1;
-        });
-        return true;
-    } catch (err) {
-        console.warn('CV align failed', err);
-        return false;
-    } finally {
-        if (src) src.delete();
-        if (gray) gray.delete();
-        if (blur) blur.delete();
-        if (edges) edges.delete();
-        if (contours) contours.delete();
-        if (hierarchy) hierarchy.delete();
-        if (approx) approx.delete();
-        if (hull) hull.delete();
-        if (warped) warped.delete();
-        if (homography) homography.delete();
-        if (srcMat) srcMat.delete();
-        if (dstMat) dstMat.delete();
-    }
-}
-
-function extractContourPoints(mat) {
-    const points = [];
-    const data = mat.data32S;
-    for (let i = 0; i < data.length; i += 2) {
-        points.push({ x: data[i], y: data[i + 1] });
-    }
-    return points;
-}
-
-function orderPointsClockwise(points) {
-    const center = points.reduce((acc, p) => ({ x: acc.x + p.x, y: acc.y + p.y }), { x: 0, y: 0 });
-    center.x /= points.length;
-    center.y /= points.length;
-    const sorted = points.slice().sort((a, b) => {
-        const angA = Math.atan2(a.y - center.y, a.x - center.x);
-        const angB = Math.atan2(b.y - center.y, b.x - center.x);
-        return angA - angB;
-    });
-    let topIndex = 0;
-    for (let i = 1; i < sorted.length; i += 1) {
-        if (sorted[i].y < sorted[topIndex].y || (sorted[i].y === sorted[topIndex].y && sorted[i].x < sorted[topIndex].x)) {
-            topIndex = i;
-        }
-    }
-    return sorted.slice(topIndex).concat(sorted.slice(0, topIndex));
-}
-
-function getHexDestinationPoints() {
-    const cx = WARP_SIZE / 2;
-    const cy = WARP_SIZE / 2;
-    const r = 140;
-    return [
-        { x: cx, y: cy - r },
-        { x: cx + 121.24, y: cy - 70 },
-        { x: cx + 121.24, y: cy + 70 },
-        { x: cx, y: cy + r },
-        { x: cx - 121.24, y: cy + 70 },
-        { x: cx - 121.24, y: cy - 70 }
-    ];
-}
-
-function approxToHex(contour) {
-    const peri = cv.arcLength(contour, true);
-    const epsilons = [0.04, 0.05, 0.06, 0.07];
-    let best = null;
-    for (let i = 0; i < epsilons.length; i += 1) {
-        const approx = new cv.Mat();
-        cv.approxPolyDP(contour, approx, epsilons[i] * peri, true);
-        if (approx.rows === 6) return approx;
-        if (!best || Math.abs(approx.rows - 6) < Math.abs(best.rows - 6)) {
-            if (best) best.delete();
-            best = approx;
-        } else {
-            approx.delete();
-        }
-    }
-    return best;
-}
-
-function flattenPoints(points) {
-    const out = [];
-    points.forEach(p => {
-        out.push(p.x, p.y);
-    });
-    return out;
-}
-
-function startBoardStatusLoop() {
-    if (boardStatusTimer) return;
-    boardStatusTimer = setInterval(() => {
-        if (isScanning) return;
-        if (!el.video || !el.instructionText) return;
-        if (!el.video.videoWidth || !el.video.videoHeight) return;
-        const result = detectBoardHomographyLive();
-        const detected = Boolean(result && result.homography);
-        el.instructionText.textContent = detected ? 'Feld erkannt - SCAN' : 'Feld nicht erkannt - SCAN';
-        if (detected && result.polygon) drawHexOutlineOverlay(result.polygon, result.view);
-        else clearBoardOverlay();
-    }, 350);
-}
-
-function stopBoardStatusLoop() {
-    if (boardStatusTimer) {
-        clearInterval(boardStatusTimer);
-        boardStatusTimer = null;
-    }
-    clearBoardOverlay();
-}
-
-function detectBoardHomography() {
-    if (!window.cv || !window.cvReady) return null;
-    const view = getViewBoxMetrics();
-    if (!view) return null;
-    const targetSize = 320;
-    sampleCanvas.width = targetSize;
-    sampleCanvas.height = targetSize;
-    sampleCtx.setTransform(1, 0, 0, 1, 0, 0);
-    drawVideoCover(sampleCtx, el.video, targetSize, targetSize);
-
-    let src = null;
-    let gray = null;
-    let blur = null;
-    let edges = null;
-    let contours = null;
-    let hierarchy = null;
-    try {
-        src = cv.imread(sampleCanvas);
-        gray = new cv.Mat();
-        blur = new cv.Mat();
-        edges = new cv.Mat();
-        contours = new cv.MatVector();
-        hierarchy = new cv.Mat();
-        cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-        cv.GaussianBlur(gray, blur, new cv.Size(5, 5), 0);
-        cv.Canny(blur, edges, 40, 100);
-        cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-
-        let bestScore = Number.POSITIVE_INFINITY;
-        let bestHull = null;
-        for (let i = 0; i < contours.size(); i += 1) {
-            const cnt = contours.get(i);
-            const area = cv.contourArea(cnt);
-            if (area < 800) continue;
-            const hull = new cv.Mat();
-            cv.convexHull(cnt, hull, false, true);
-            const approx = approxToHex(hull);
-            const polyCount = approx ? approx.rows : 0;
-            if (approx) approx.delete();
-            if (polyCount < 5 || polyCount > 8) {
-                hull.delete();
-                continue;
-            }
-            let shapeScore = 0;
-            if (boardTemplateReady && boardTemplateContour) {
-                shapeScore = cv.matchShapes(hull, boardTemplateContour, cv.CONTOURS_MATCH_I1, 0);
-            } else {
-                shapeScore = Math.abs(polyCount - 6);
-            }
-            const score = shapeScore + (1 / Math.max(area, 1)) * 15000;
-            if (score < bestScore) {
-                bestScore = score;
-                if (bestHull) bestHull.delete();
-                bestHull = hull;
-            } else {
-                hull.delete();
-            }
-        }
-        if (!bestHull || bestScore >= 0.35) return null;
-
-        const approx = approxToHex(bestHull);
-        if (!approx || approx.rows !== 6) {
-            if (approx) approx.delete();
-            bestHull.delete();
-            return null;
-        }
-        const srcPoints = extractContourPoints(approx).map(p => ({
-            x: p.x * (view.rect.width / targetSize),
-            y: p.y * (view.rect.height / targetSize)
-        }));
-        const orderedSrc = orderPointsClockwise(srcPoints);
-        const dstPoints = getHexDestinationPoints();
-
-        const srcMat = cv.matFromArray(6, 1, cv.CV_32FC2, flattenPoints(dstPoints));
-        const dstMat = cv.matFromArray(6, 1, cv.CV_32FC2, flattenPoints(orderedSrc));
-        const homography = cv.findHomography(srcMat, dstMat);
-        approx.delete();
-        bestHull.delete();
-        srcMat.delete();
-        dstMat.delete();
-        if (!homography || homography.empty()) return null;
-        const H = Array.from(homography.data64F);
-        homography.delete();
-        return { homography: H, view };
-    } catch (err) {
-        return null;
-    } finally {
-        if (src) src.delete();
-        if (gray) gray.delete();
-        if (blur) blur.delete();
-        if (edges) edges.delete();
-        if (contours) contours.delete();
-        if (hierarchy) hierarchy.delete();
-    }
-}
-
-function detectBoardHomographyLive() {
-    if (!window.cv || !window.cvReady) return null;
-    const view = getViewBoxMetrics();
-    if (!view) return null;
-    const result = detectHexHomography(el.video, view, 320);
-    if (!result || !result.homography) {
-        boardStreak = 0;
-        return null;
-    }
-    boardStreak += 1;
-    if (boardStreak < 2 && boardLastHomography) {
-        return { homography: boardLastHomography, polygon: result.polygon, view };
-    }
-    let H = result.homography;
-    if (boardLastHomography) {
-        H = smoothHomography(boardLastHomography, H, 0.35);
-    }
-    boardLastHomography = H;
-    return { homography: H, polygon: result.polygon, view };
-}
-
-function detectHexHomography(videoElement, view, targetSize) {
-    if (!window.cv || !window.cvReady) return null;
-    sampleCanvas.width = targetSize;
-    sampleCanvas.height = targetSize;
-    sampleCtx.setTransform(1, 0, 0, 1, 0, 0);
-    drawVideoCover(sampleCtx, videoElement, targetSize, targetSize);
-
-    let src = null;
-    let gray = null;
-    let blurred = null;
-    let edges = null;
-    let contours = null;
-    let hierarchy = null;
-    let bestApprox = null;
-    let bestArea = 0;
-    try {
-        src = cv.imread(sampleCanvas);
-        gray = new cv.Mat();
-        blurred = new cv.Mat();
-        edges = new cv.Mat();
-        contours = new cv.MatVector();
-        hierarchy = new cv.Mat();
-        cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-        cv.GaussianBlur(gray, blurred, new cv.Size(DETECTION_HEX.blurSize, DETECTION_HEX.blurSize), 0);
-        cv.Canny(blurred, edges, DETECTION_HEX.cannyLow, DETECTION_HEX.cannyHigh);
-        cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-
-        const minArea = targetSize * targetSize * DETECTION_HEX.minAreaRatio;
-        for (let i = 0; i < contours.size(); i += 1) {
-            const contour = contours.get(i);
-            const area = cv.contourArea(contour);
-            if (area < minArea) {
-                contour.delete();
-                continue;
-            }
-            const peri = cv.arcLength(contour, true);
-            const approx = new cv.Mat();
-            cv.approxPolyDP(contour, approx, DETECTION_HEX.approxEpsilon * peri, true);
-            if (approx.rows === 6 && cv.isContourConvex(approx)) {
-                if (area > bestArea) {
-                    if (bestApprox) bestApprox.delete();
-                    bestApprox = approx;
-                    bestArea = area;
-                } else {
-                    approx.delete();
-                }
-            } else {
-                approx.delete();
-            }
-            contour.delete();
-        }
-        if (!bestApprox) return null;
-
-        const ordered = orderPointsClockwise(bestApprox);
-        const srcPoints = getHexPointsForSize(WARP_SIZE);
-        const srcMat = cv.matFromArray(6, 1, cv.CV_32FC2, flattenPoints(srcPoints));
-        const dstMat = cv.matFromArray(6, 1, cv.CV_32FC2, flattenPoints(ordered));
-        const homography = cv.findHomography(srcMat, dstMat);
-        srcMat.delete();
-        dstMat.delete();
-        if (!homography || homography.empty()) return null;
-        const H = Array.from(homography.data64F);
-        homography.delete();
-        const scaleX = view.rect.width / targetSize;
-        const scaleY = view.rect.height / targetSize;
-        const scaleMat = [scaleX, 0, 0, 0, scaleY, 0, 0, 0, 1];
-        const H_view = multiplyHomography(scaleMat, H);
-        const polygon = ordered.map(p => ({ x: p.x * scaleX, y: p.y * scaleY }));
-        return { homography: H_view, polygon };
-    } catch (err) {
-        return null;
-    } finally {
-        if (src) src.delete();
-        if (gray) gray.delete();
-        if (blurred) blurred.delete();
-        if (edges) edges.delete();
-        if (contours) contours.delete();
-        if (hierarchy) hierarchy.delete();
-        if (bestApprox) bestApprox.delete();
-    }
-}
-
-function multiplyHomography(a, b) {
-    return [
-        a[0] * b[0] + a[1] * b[3] + a[2] * b[6],
-        a[0] * b[1] + a[1] * b[4] + a[2] * b[7],
-        a[0] * b[2] + a[1] * b[5] + a[2] * b[8],
-        a[3] * b[0] + a[4] * b[3] + a[5] * b[6],
-        a[3] * b[1] + a[4] * b[4] + a[5] * b[7],
-        a[3] * b[2] + a[4] * b[5] + a[5] * b[8],
-        a[6] * b[0] + a[7] * b[3] + a[8] * b[6],
-        a[6] * b[1] + a[7] * b[4] + a[8] * b[7],
-        a[6] * b[2] + a[7] * b[5] + a[8] * b[8],
-    ];
-}
-function drawBoardOverlay(homography, view) {
-    if (!el.overlayCanvas || !homography || !view) return;
-    const dpr = window.devicePixelRatio || 1;
-    const width = Math.max(1, Math.round(view.rect.width * dpr));
-    const height = Math.max(1, Math.round(view.rect.height * dpr));
-    if (el.overlayCanvas.width !== width) el.overlayCanvas.width = width;
-    if (el.overlayCanvas.height !== height) el.overlayCanvas.height = height;
-    const ctx = el.overlayCanvas.getContext('2d');
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, view.rect.width, view.rect.height);
-
-    const apply = (pt) => applyHomography(homography, pt.x + WARP_SIZE / 2, pt.y + WARP_SIZE / 2);
-    ctx.lineWidth = 1.5;
-    ctx.strokeStyle = 'rgba(0, 155, 158, 0.7)';
-    ctx.beginPath();
-    (GRID_CONNECTIONS || []).forEach(([a, b]) => {
-        const p1 = apply(a);
-        const p2 = apply(b);
-        ctx.moveTo(p1.x, p1.y);
-        ctx.lineTo(p2.x, p2.y);
-    });
-    ctx.stroke();
-
-    ctx.fillStyle = 'rgba(0, 155, 158, 0.5)';
-    (PIN_GRID || []).forEach(pin => {
-        const p = apply(pin);
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, 2.5, 0, Math.PI * 2);
-        ctx.fill();
-    });
-    el.overlayCanvas.classList.add('overlay-active');
-}
-
-function clearBoardOverlay() {
-    if (!el.overlayCanvas) return;
-    const ctx = el.overlayCanvas.getContext('2d');
-    ctx.clearRect(0, 0, el.overlayCanvas.width, el.overlayCanvas.height);
-    el.overlayCanvas.classList.remove('overlay-active');
-}
-
-function drawMinAreaRectOverlay(rect, view, dpr, color) {
-    if (!el.overlayCanvas || !rect || !view) return;
-    const width = Math.max(1, Math.round(view.rect.width * dpr));
-    const height = Math.max(1, Math.round(view.rect.height * dpr));
-    if (el.overlayCanvas.width !== width) el.overlayCanvas.width = width;
-    if (el.overlayCanvas.height !== height) el.overlayCanvas.height = height;
-    const ctx = el.overlayCanvas.getContext('2d');
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const points = cv.RotatedRect.points(rect);
-    ctx.strokeStyle = color || 'rgba(0, 255, 120, 0.8)';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    points.forEach((p, idx) => {
-        const x = p.x / dpr;
-        const y = p.y / dpr;
-        if (idx === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-    });
-    ctx.closePath();
-    ctx.stroke();
-    el.overlayCanvas.classList.add('overlay-active');
-}
-
-function drawBoardOverlayFromHull(hull, view, dpr) {
-    if (!el.overlayCanvas || !hull || !view) return;
-    const width = Math.max(1, Math.round(view.rect.width * dpr));
-    const height = Math.max(1, Math.round(view.rect.height * dpr));
-    if (el.overlayCanvas.width !== width) el.overlayCanvas.width = width;
-    if (el.overlayCanvas.height !== height) el.overlayCanvas.height = height;
-    const ctx = el.overlayCanvas.getContext('2d');
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, view.rect.width, view.rect.height);
-    ctx.strokeStyle = 'rgba(0, 220, 120, 0.85)';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    const data = hull.data32S;
-    for (let i = 0; i < data.length; i += 2) {
-        const x = data[i] / dpr;
-        const y = data[i + 1] / dpr;
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-    }
-    ctx.closePath();
-    ctx.stroke();
-    el.overlayCanvas.classList.add('overlay-active');
-}
-
-function drawHexOutlineOverlay(points, view) {
-    if (!el.overlayCanvas || !points || !view) return;
-    const dpr = window.devicePixelRatio || 1;
-    const width = Math.max(1, Math.round(view.rect.width * dpr));
-    const height = Math.max(1, Math.round(view.rect.height * dpr));
-    if (el.overlayCanvas.width !== width) el.overlayCanvas.width = width;
-    if (el.overlayCanvas.height !== height) el.overlayCanvas.height = height;
-    const ctx = el.overlayCanvas.getContext('2d');
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, view.rect.width, view.rect.height);
-    ctx.strokeStyle = 'rgba(0, 155, 158, 0.9)';
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    points.forEach((p, idx) => {
-        if (idx === 0) ctx.moveTo(p.x, p.y);
-        else ctx.lineTo(p.x, p.y);
-    });
-    ctx.closePath();
-    ctx.stroke();
-    el.overlayCanvas.classList.add('overlay-active');
-}
-
-function drawMinAreaRectOverlayScaled(rect, view, scale) {
-    if (!el.overlayCanvas || !rect || !view) return;
-    const dpr = window.devicePixelRatio || 1;
-    const width = Math.max(1, Math.round(view.rect.width * dpr));
-    const height = Math.max(1, Math.round(view.rect.height * dpr));
-    if (el.overlayCanvas.width !== width) el.overlayCanvas.width = width;
-    if (el.overlayCanvas.height !== height) el.overlayCanvas.height = height;
-    const ctx = el.overlayCanvas.getContext('2d');
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, view.rect.width, view.rect.height);
-    const points = cv.RotatedRect.points(rect);
-    ctx.strokeStyle = 'rgba(0, 255, 120, 0.8)';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    points.forEach((p, idx) => {
-        const x = p.x * scale;
-        const y = p.y * scale;
-        if (idx === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-    });
-    ctx.closePath();
-    ctx.stroke();
-    el.overlayCanvas.classList.add('overlay-active');
-}
-
-function applyAffine(mat, x, y) {
-    const m = mat.data64F || mat.data32F;
-    const nx = m[0] * x + m[1] * y + m[2];
-    const ny = m[3] * x + m[4] * y + m[5];
-    return { x: nx, y: ny };
-}
-
-function applyHomography(H, x, y) {
-    const w = H[6] * x + H[7] * y + H[8];
-    const nx = (H[0] * x + H[1] * y + H[2]) / w;
-    const ny = (H[3] * x + H[4] * y + H[5]) / w;
-    return { x: nx, y: ny };
-}
-
-function smoothHomography(prev, next, alpha) {
-    const out = [];
-    for (let i = 0; i < prev.length; i += 1) {
-        out[i] = prev[i] * (1 - alpha) + next[i] * alpha;
-    }
-    return out;
 }
 
 function averageCircleColor(data, width, height, cx, cy, radius) {
@@ -1304,6 +684,239 @@ function buildTriangleCenters(pins) {
         }
     }
     return centers;
+}
+
+function mapViewBoxToSample(center) {
+    const x = ((center.x + VIEWBOX_HALF) / VIEWBOX_SIZE) * sampleCanvas.width;
+    const y = ((center.y + VIEWBOX_HALF) / VIEWBOX_SIZE) * sampleCanvas.height;
+    if (x < 0 || y < 0 || x >= sampleCanvas.width || y >= sampleCanvas.height) return null;
+    return { x, y };
+}
+
+function buildAlignmentLayout() {
+    if (!el.overlaySvg) return;
+    const rect = el.overlaySvg.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const sizeBase = Math.min(rect.width, rect.height);
+    const maxSampleSize = 360;
+    const minSampleSize = 180;
+    const scaleFactor = Math.min(1, maxSampleSize / sizeBase);
+    const size = Math.max(minSampleSize, Math.round(sizeBase * scaleFactor));
+    sampleCanvas.width = size;
+    sampleCanvas.height = size;
+    cvInputCanvas.width = size;
+    cvInputCanvas.height = size;
+    sampleCtx.setTransform(1, 0, 0, 1, 0, 0);
+    alignmentLayout = { size };
+}
+
+function startAlignmentLoop() {
+    if (alignmentLoopId) return;
+    alignmentLoopId = requestAnimationFrame(runAlignmentLoop);
+}
+
+function stopAlignmentLoop() {
+    if (!alignmentLoopId) return;
+    cancelAnimationFrame(alignmentLoopId);
+    alignmentLoopId = null;
+}
+
+function runAlignmentLoop(timestamp) {
+    alignmentLoopId = requestAnimationFrame(runAlignmentLoop);
+    if (scanInProgress) return;
+    if (!cvReady || !alignmentLayout || !el.video) return;
+    const now = timestamp || performance.now();
+    if (now - lastAlignmentSample < ALIGN_SAMPLE_INTERVAL) return;
+    lastAlignmentSample = now;
+    alignmentActive = detectAndWarpHex();
+    updateScanReadyState();
+}
+
+function updateScanReadyState() {
+    if (!el.instructionText || !el.scanBtn) return;
+    const isGameView = document.getElementById('view-game')?.classList.contains('active-view');
+    if (!isGameView) return;
+    if (!cvReady) {
+        setScanReady(true, 'Ausrichten und SCAN');
+        return;
+    }
+    if (alignmentActive) {
+        setScanReady(true, 'Ausrichten und SCAN');
+    } else {
+        setScanReady(false, 'Board ausrichten...');
+    }
+}
+
+function waitForOpenCv(timeoutMs = 15000) {
+    return new Promise((resolve) => {
+        const start = performance.now();
+        const timer = window.setInterval(() => {
+            if (window.cv && window.cv.Mat) {
+                window.clearInterval(timer);
+                resolve(true);
+                return;
+            }
+            if (performance.now() - start > timeoutMs) {
+                window.clearInterval(timer);
+                resolve(false);
+            }
+        }, 60);
+    });
+}
+
+function orderHexPoints(contour) {
+    const points = [];
+    for (let i = 0; i < contour.rows; i += 1) {
+        points.push({ x: contour.intPtr(i, 0)[0], y: contour.intPtr(i, 0)[1] });
+    }
+
+    const cx = points.reduce((sum, point) => sum + point.x, 0) / points.length;
+    const cy = points.reduce((sum, point) => sum + point.y, 0) / points.length;
+
+    points.sort((a, b) => {
+        const angleA = Math.atan2(a.y - cy, a.x - cx);
+        const angleB = Math.atan2(b.y - cy, b.x - cx);
+        return angleA - angleB;
+    });
+
+    let topIndex = 0;
+    for (let i = 1; i < points.length; i += 1) {
+        const current = points[i];
+        const best = points[topIndex];
+        if (current.y < best.y || (current.y === best.y && current.x < best.x)) {
+            topIndex = i;
+        }
+    }
+
+    return points.slice(topIndex).concat(points.slice(0, topIndex));
+}
+
+function detectAndWarpHex() {
+    if (!cvReady || !alignmentLayout || !el.video || !el.video.videoWidth) {
+        return false;
+    }
+
+    drawVideoCover(cvInputCtx, el.video, cvInputCanvas.width, cvInputCanvas.height);
+
+    const src = cv.imread(cvInputCanvas);
+    const gray = new cv.Mat();
+    const grayEq = new cv.Mat();
+    const blurred = new cv.Mat();
+    const edges = new cv.Mat();
+    const contours = new cv.MatVector();
+    const hierarchy = new cv.Mat();
+    let bestApprox = null;
+    let bestArea = 0;
+    let aligned = false;
+
+    try {
+        cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+        cv.equalizeHist(gray, grayEq);
+        cv.GaussianBlur(
+            grayEq,
+            blurred,
+            new cv.Size(DETECTION.blurSize, DETECTION.blurSize),
+            0
+        );
+        cv.Canny(blurred, edges, DETECTION.cannyLow, DETECTION.cannyHigh);
+        cv.findContours(
+            edges,
+            contours,
+            hierarchy,
+            cv.RETR_EXTERNAL,
+            cv.CHAIN_APPROX_SIMPLE
+        );
+
+        const minArea = cvInputCanvas.width * cvInputCanvas.height * DETECTION.minAreaRatio;
+        for (let i = 0; i < contours.size(); i += 1) {
+            const contour = contours.get(i);
+            const area = cv.contourArea(contour);
+            if (area < minArea) {
+                contour.delete();
+                continue;
+            }
+
+            const peri = cv.arcLength(contour, true);
+            const approx = new cv.Mat();
+            cv.approxPolyDP(contour, approx, DETECTION.approxEpsilon * peri, true);
+
+            if (approx.rows === 6 && cv.isContourConvex(approx)) {
+                if (area > bestArea) {
+                    if (bestApprox) {
+                        bestApprox.delete();
+                    }
+                    bestApprox = approx;
+                    bestArea = area;
+                } else {
+                    approx.delete();
+                }
+            } else {
+                approx.delete();
+            }
+
+            contour.delete();
+        }
+
+        if (!bestApprox) {
+            return false;
+        }
+
+        const ordered = orderHexPoints(bestApprox);
+        const destPoints = HEX_POINTS.map(([x, y]) => ({
+            x: x * sampleCanvas.width,
+            y: y * sampleCanvas.height,
+        }));
+
+        const srcMat = cv.matFromArray(
+            ordered.length,
+            1,
+            cv.CV_32FC2,
+            ordered.flatMap((point) => [point.x, point.y])
+        );
+        const dstMat = cv.matFromArray(
+            destPoints.length,
+            1,
+            cv.CV_32FC2,
+            destPoints.flatMap((point) => [point.x, point.y])
+        );
+        const homography = cv.findHomography(srcMat, dstMat);
+        const warped = new cv.Mat();
+
+        try {
+            if (homography.empty()) {
+                return false;
+            }
+            cv.warpPerspective(
+                src,
+                warped,
+                homography,
+                new cv.Size(sampleCanvas.width, sampleCanvas.height),
+                cv.INTER_LINEAR,
+                cv.BORDER_CONSTANT,
+                new cv.Scalar(0, 0, 0, 255)
+            );
+            cv.imshow(sampleCanvas, warped);
+            aligned = true;
+        } finally {
+            srcMat.delete();
+            dstMat.delete();
+            homography.delete();
+            warped.delete();
+        }
+    } finally {
+        src.delete();
+        gray.delete();
+        grayEq.delete();
+        blurred.delete();
+        edges.delete();
+        contours.delete();
+        hierarchy.delete();
+        if (bestApprox) {
+            bestApprox.delete();
+        }
+    }
+
+    return aligned;
 }
 
 function showResults() {
@@ -1499,4 +1112,3 @@ function registerServiceWorker() {
         navigator.serviceWorker.register('./sw.js').catch(err => console.warn('SW failed', err));
     }
 }
-
