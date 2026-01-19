@@ -27,6 +27,7 @@ const SAMPLE_RADIUS_MM = 5; // ~1cm Durchmesser
 const SAT_MIN = 45;
 const VAL_MIN = 45;
 const TRIANGLE_CENTERS = buildTriangleCenters(PIN_GRID);
+const WARP_SIZE = VIEWBOX_SIZE;
 let players = [
     { name: 'Spieler 1', colorKey: 'magenta', score: 0 },
     { name: 'Spieler 2', colorKey: 'yellow', score: 0 }
@@ -453,7 +454,8 @@ function triggerScan() {
 
     try {
         const counts = Object.keys(COLORS).reduce((acc, key) => ({ ...acc, [key]: 0 }), {});
-        scanWithStaticOverlay(counts);
+        const usedCv = scanWithContourAlignment(counts);
+        if (!usedCv) scanWithStaticOverlay(counts);
 
         players.forEach(p => {
             p.score = counts[p.colorKey] || 0;
@@ -519,6 +521,159 @@ function scanWithStaticOverlay(counts) {
         const colorKey = classifyColor(avg);
         if (colorKey) counts[colorKey] += 1;
     });
+}
+
+function scanWithContourAlignment(counts) {
+    if (!window.cv || !window.cvReady) return false;
+    const view = getViewBoxMetrics();
+    if (!view) return false;
+    const dpr = window.devicePixelRatio || 1;
+    const canvasWidth = Math.max(1, Math.round(view.rect.width * dpr));
+    const canvasHeight = Math.max(1, Math.round(view.rect.height * dpr));
+    sampleCanvas.width = canvasWidth;
+    sampleCanvas.height = canvasHeight;
+    sampleCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    drawVideoCover(sampleCtx, el.video, view.rect.width, view.rect.height);
+
+    let src = null;
+    let gray = null;
+    let blur = null;
+    let edges = null;
+    let contours = null;
+    let hierarchy = null;
+    let approx = null;
+    let hull = null;
+    let warped = null;
+    let homography = null;
+    let srcMat = null;
+    let dstMat = null;
+
+    try {
+        src = cv.imread(sampleCanvas);
+        gray = new cv.Mat();
+        blur = new cv.Mat();
+        edges = new cv.Mat();
+        contours = new cv.MatVector();
+        hierarchy = new cv.Mat();
+
+        cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+        cv.GaussianBlur(gray, blur, new cv.Size(5, 5), 0);
+        cv.Canny(blur, edges, 60, 120);
+        cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+        let bestContour = null;
+        let bestArea = 0;
+        for (let i = 0; i < contours.size(); i += 1) {
+            const cnt = contours.get(i);
+            const area = cv.contourArea(cnt);
+            if (area > bestArea) {
+                bestArea = area;
+                bestContour = cnt;
+            }
+        }
+        if (!bestContour || bestArea < 1000) return false;
+
+        const peri = cv.arcLength(bestContour, true);
+        approx = new cv.Mat();
+        cv.approxPolyDP(bestContour, approx, 0.02 * peri, true);
+
+        if (approx.rows !== 6) {
+            hull = new cv.Mat();
+            cv.convexHull(bestContour, hull, false, true);
+            const hullPeri = cv.arcLength(hull, true);
+            approx.delete();
+            approx = new cv.Mat();
+            cv.approxPolyDP(hull, approx, 0.02 * hullPeri, true);
+        }
+        if (approx.rows !== 6) return false;
+
+        const srcPoints = extractContourPoints(approx);
+        const orderedSrc = orderPointsClockwise(srcPoints);
+        const dstPoints = getHexDestinationPoints();
+
+        srcMat = cv.matFromArray(6, 1, cv.CV_32FC2, flattenPoints(orderedSrc));
+        dstMat = cv.matFromArray(6, 1, cv.CV_32FC2, flattenPoints(dstPoints));
+        homography = cv.findHomography(srcMat, dstMat);
+        if (!homography || homography.empty()) return false;
+
+        warped = new cv.Mat();
+        cv.warpPerspective(src, warped, homography, new cv.Size(WARP_SIZE, WARP_SIZE));
+
+        const radius = 5;
+        TRIANGLE_CENTERS.forEach(center => {
+            const x = center.x + WARP_SIZE / 2;
+            const y = center.y + WARP_SIZE / 2;
+            const avg = averageCircleColor(warped.data, warped.cols, warped.rows, x, y, radius);
+            const colorKey = classifyColor(avg);
+            if (colorKey) counts[colorKey] += 1;
+        });
+        return true;
+    } catch (err) {
+        console.warn('CV align failed', err);
+        return false;
+    } finally {
+        if (src) src.delete();
+        if (gray) gray.delete();
+        if (blur) blur.delete();
+        if (edges) edges.delete();
+        if (contours) contours.delete();
+        if (hierarchy) hierarchy.delete();
+        if (approx) approx.delete();
+        if (hull) hull.delete();
+        if (warped) warped.delete();
+        if (homography) homography.delete();
+        if (srcMat) srcMat.delete();
+        if (dstMat) dstMat.delete();
+    }
+}
+
+function extractContourPoints(mat) {
+    const points = [];
+    const data = mat.data32S;
+    for (let i = 0; i < data.length; i += 2) {
+        points.push({ x: data[i], y: data[i + 1] });
+    }
+    return points;
+}
+
+function orderPointsClockwise(points) {
+    const center = points.reduce((acc, p) => ({ x: acc.x + p.x, y: acc.y + p.y }), { x: 0, y: 0 });
+    center.x /= points.length;
+    center.y /= points.length;
+    const sorted = points.slice().sort((a, b) => {
+        const angA = Math.atan2(a.y - center.y, a.x - center.x);
+        const angB = Math.atan2(b.y - center.y, b.x - center.x);
+        return angA - angB;
+    });
+    let topIndex = 0;
+    for (let i = 1; i < sorted.length; i += 1) {
+        if (sorted[i].y < sorted[topIndex].y || (sorted[i].y === sorted[topIndex].y && sorted[i].x < sorted[topIndex].x)) {
+            topIndex = i;
+        }
+    }
+    return sorted.slice(topIndex).concat(sorted.slice(0, topIndex));
+}
+
+function getHexDestinationPoints() {
+    const cx = WARP_SIZE / 2;
+    const cy = WARP_SIZE / 2;
+    const r = 140;
+    return [
+        { x: cx, y: cy - r },
+        { x: cx + 121.24, y: cy - 70 },
+        { x: cx + 121.24, y: cy + 70 },
+        { x: cx, y: cy + r },
+        { x: cx - 121.24, y: cy + 70 },
+        { x: cx - 121.24, y: cy - 70 }
+    ];
+}
+
+function flattenPoints(points) {
+    const out = [];
+    points.forEach(p => {
+        out.push(p.x, p.y);
+    });
+    return out;
 }
 
 function averageCircleColor(data, width, height, cx, cy, radius) {
