@@ -61,6 +61,7 @@ let alignmentLayout = null;
 let alignmentLoopId = null;
 let lastAlignmentSample = 0;
 let scanInProgress = false;
+let hexMaskCache = null;
 
 const el = {};
 const sampleCanvas = document.createElement('canvas');
@@ -505,11 +506,17 @@ function triggerScan() {
     try {
         const counts = Object.keys(COLORS).reduce((acc, key) => ({ ...acc, [key]: 0 }), {});
         let usedAlignment = false;
+        let usedBlobCounts = false;
         if (cvReady) {
             alignmentActive = detectAndWarpHex();
             updateScanReadyState();
             if (alignmentActive) {
                 usedAlignment = scanWithAlignedSample(counts);
+                const blobCounts = detectBlobCountsFromAligned();
+                if (blobCounts) {
+                    applyBlobCounts(blobCounts, counts);
+                    usedBlobCounts = true;
+                }
             }
         }
         if (!usedAlignment) {
@@ -601,6 +608,82 @@ function scanWithAlignedSample(counts) {
     return true;
 }
 
+function detectBlobCountsFromAligned() {
+    if (!cvReady || !alignmentActive || !sampleCanvas.width) return null;
+    const src = cv.imread(sampleCanvas);
+    const hsv = new cv.Mat();
+    const kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(3, 3));
+    const counts = {};
+    let total = 0;
+
+    try {
+        cv.cvtColor(src, hsv, cv.COLOR_RGBA2HSV);
+        const maskHex = getHexMask(sampleCanvas.width, sampleCanvas.height);
+        const { minArea, maxArea } = getBlobAreaRange(sampleCanvas.width);
+
+        Object.keys(COLORS).forEach((key) => {
+            const colorMask = new cv.Mat();
+            const masked = new cv.Mat();
+            const contours = new cv.MatVector();
+            const hierarchy = new cv.Mat();
+            const [h1, s1, v1] = COLORS[key].hsvLow;
+            const [h2, s2, v2] = COLORS[key].hsvHigh;
+
+            try {
+                cv.inRange(
+                    hsv,
+                    new cv.Scalar(h1, s1, v1, 0),
+                    new cv.Scalar(h2, s2, v2, 255),
+                    colorMask
+                );
+                cv.bitwise_and(colorMask, maskHex, masked);
+                cv.morphologyEx(masked, masked, cv.MORPH_OPEN, kernel);
+                cv.morphologyEx(masked, masked, cv.MORPH_CLOSE, kernel);
+                cv.findContours(
+                    masked,
+                    contours,
+                    hierarchy,
+                    cv.RETR_EXTERNAL,
+                    cv.CHAIN_APPROX_SIMPLE
+                );
+
+                let count = 0;
+                for (let i = 0; i < contours.size(); i += 1) {
+                    const contour = contours.get(i);
+                    const area = cv.contourArea(contour);
+                    if (area >= minArea && area <= maxArea) {
+                        count += 1;
+                    }
+                    contour.delete();
+                }
+                counts[key] = count;
+                total += count;
+            } finally {
+                colorMask.delete();
+                masked.delete();
+                contours.delete();
+                hierarchy.delete();
+            }
+        });
+    } finally {
+        src.delete();
+        hsv.delete();
+        kernel.delete();
+    }
+
+    if (total < 1 || total > TRIANGLE_CENTERS.length) return null;
+    return counts;
+}
+
+function applyBlobCounts(blobCounts, counts) {
+    if (!blobCounts) return;
+    Object.keys(COLORS).forEach((key) => {
+        if (Number.isFinite(blobCounts[key])) {
+            counts[key] = blobCounts[key];
+        }
+    });
+}
+
 function averageCircleColor(data, width, height, cx, cy, radius, gains) {
     const gainR = gains?.r ?? 1;
     const gainG = gains?.g ?? 1;
@@ -657,6 +740,40 @@ function computeWhiteBalanceGains(data) {
         r: clampGain(gray / (avgR || 1)),
         g: clampGain(gray / (avgG || 1)),
         b: clampGain(gray / (avgB || 1)),
+    };
+}
+
+function getHexMask(width, height) {
+    if (hexMaskCache && hexMaskCache.width === width && hexMaskCache.height === height) {
+        return hexMaskCache.mask;
+    }
+    if (hexMaskCache?.mask) {
+        hexMaskCache.mask.delete();
+    }
+
+    const mask = cv.Mat.zeros(height, width, cv.CV_8UC1);
+    const points = HEX_POINTS.flatMap(([x, y]) => [
+        Math.round(x * width),
+        Math.round(y * height),
+    ]);
+    const pts = cv.matFromArray(HEX_POINTS.length, 1, cv.CV_32SC2, points);
+    const ptsVec = new cv.MatVector();
+    ptsVec.push_back(pts);
+    cv.fillPoly(mask, ptsVec, new cv.Scalar(255));
+    pts.delete();
+    ptsVec.delete();
+
+    hexMaskCache = { width, height, mask };
+    return mask;
+}
+
+function getBlobAreaRange(width) {
+    const scale = width / VIEWBOX_SIZE;
+    const radiusPx = Math.max(5, 9 * scale);
+    const area = Math.PI * radiusPx * radiusPx;
+    return {
+        minArea: area * 0.35,
+        maxArea: area * 2.8,
     };
 }
 
@@ -737,7 +854,7 @@ function buildAlignmentLayout() {
     const rect = el.overlaySvg.getBoundingClientRect();
     if (!rect.width || !rect.height) return;
     const sizeBase = Math.min(rect.width, rect.height);
-    const maxSampleSize = 360;
+    const maxSampleSize = 480;
     const minSampleSize = 180;
     const scaleFactor = Math.min(1, maxSampleSize / sizeBase);
     const size = Math.max(minSampleSize, Math.round(sizeBase * scaleFactor));
