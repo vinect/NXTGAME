@@ -279,8 +279,6 @@ button, .lobby-card, .scan-btn, .icon-btn, .primary-btn {
     aspect-ratio: 1/1;
     background: #0b0f12;
     box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
-    border-radius: 22px;
-    overflow: hidden;
 }
 
 .camera-wrapper {
@@ -288,7 +286,14 @@ button, .lobby-card, .scan-btn, .icon-btn, .primary-btn {
     inset: 0;
     overflow: hidden;
     background: #000;
-    border-radius: 22px;
+    -webkit-mask-image: var(--hex-mask);
+    mask-image: var(--hex-mask);
+    -webkit-mask-size: 100% 100%;
+    mask-size: 100% 100%;
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+    mask-position: center;
 }
 #video, #canvas {
     position: absolute;
@@ -304,7 +309,12 @@ button, .lobby-card, .scan-btn, .icon-btn, .primary-btn {
 #canvas { display: none; }
 
 .hex-grid-overlay {
-    display: none;
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+    z-index: 10;
+    display: block;
 }
 .hex-dim {
     fill: rgba(8, 10, 12, 0.92);
@@ -341,12 +351,7 @@ button, .lobby-card, .scan-btn, .icon-btn, .primary-btn {
     inset: 0;
     width: 100%;
     height: 100%;
-    z-index: 12;
-    opacity: 0;
-    transition: opacity 0.25s ease;
-}
-#overlay-canvas.overlay-active {
-    opacity: 1;
+    z-index: 9;
 }
 
 /* --- SCAN CONTROLS (UNTER DEM VIDEO) --- */
