@@ -309,51 +309,19 @@ function initBoardTemplateWatcher() {
 }
 
 function initBoardTemplate() {
-    const img = document.getElementById('board-template');
-    if (!img || boardTemplateReady) return;
-    if (!img.complete || !img.naturalWidth) return;
-    let src = null;
-    let gray = null;
-    let blur = null;
-    let edges = null;
-    let contours = null;
-    let hierarchy = null;
-    let bestContour = null;
-    let bestArea = 0;
-    try {
-        src = cv.imread(img);
-        gray = new cv.Mat();
-        blur = new cv.Mat();
-        edges = new cv.Mat();
-        contours = new cv.MatVector();
-        hierarchy = new cv.Mat();
-        cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-        cv.GaussianBlur(gray, blur, new cv.Size(5, 5), 0);
-        cv.Canny(blur, edges, 60, 120);
-        cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-        for (let i = 0; i < contours.size(); i += 1) {
-            const cnt = contours.get(i);
-            const area = cv.contourArea(cnt);
-            if (area > bestArea) {
-                bestArea = area;
-                bestContour = cnt;
-            }
-        }
-        if (!bestContour || bestArea < 1000) return;
-        const hull = new cv.Mat();
-        cv.convexHull(bestContour, hull, false, true);
-        boardTemplateContour = hull;
-        boardTemplateReady = true;
-    } catch (err) {
-        console.warn('Template init failed', err);
-    } finally {
-        if (src) src.delete();
-        if (gray) gray.delete();
-        if (blur) blur.delete();
-        if (edges) edges.delete();
-        if (contours) contours.delete();
-        if (hierarchy) hierarchy.delete();
+    if (boardTemplateReady || !window.cvReady || !window.cv) return;
+    const r = 100;
+    const cx = 150;
+    const cy = 150;
+    const pts = [];
+    for (let i = 0; i < 6; i += 1) {
+        const theta = (i * 60 * Math.PI) / 180;
+        const x = cx + r * Math.sin(theta);
+        const y = cy - r * Math.cos(theta);
+        pts.push(x, y);
     }
+    boardTemplateContour = cv.matFromArray(6, 1, cv.CV_32SC2, pts);
+    boardTemplateReady = true;
 }
 
 function setDiceValue(value) {
@@ -771,7 +739,7 @@ function getHexDestinationPoints() {
 
 function approxToHex(contour) {
     const peri = cv.arcLength(contour, true);
-    const epsilons = [0.015, 0.02, 0.03, 0.04];
+    const epsilons = [0.04, 0.05, 0.06, 0.07];
     let best = null;
     for (let i = 0; i < epsilons.length; i += 1) {
         const approx = new cv.Mat();
@@ -821,7 +789,7 @@ function detectBoardHomography() {
     if (!window.cv || !window.cvReady) return null;
     const view = getViewBoxMetrics();
     if (!view) return null;
-    const targetSize = 240;
+    const targetSize = 320;
     sampleCanvas.width = targetSize;
     sampleCanvas.height = targetSize;
     sampleCtx.setTransform(1, 0, 0, 1, 0, 0);
@@ -842,7 +810,7 @@ function detectBoardHomography() {
         hierarchy = new cv.Mat();
         cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
         cv.GaussianBlur(gray, blur, new cv.Size(5, 5), 0);
-        cv.Canny(blur, edges, 60, 120);
+        cv.Canny(blur, edges, 40, 100);
         cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
         let bestScore = Number.POSITIVE_INFINITY;
@@ -850,7 +818,7 @@ function detectBoardHomography() {
         for (let i = 0; i < contours.size(); i += 1) {
             const cnt = contours.get(i);
             const area = cv.contourArea(cnt);
-            if (area < 400) continue;
+            if (area < 800) continue;
             const hull = new cv.Mat();
             cv.convexHull(cnt, hull, false, true);
             const approx = approxToHex(hull);
@@ -866,7 +834,7 @@ function detectBoardHomography() {
             } else {
                 shapeScore = Math.abs(polyCount - 6);
             }
-            const score = shapeScore + (1 / Math.max(area, 1)) * 20000;
+            const score = shapeScore + (1 / Math.max(area, 1)) * 15000;
             if (score < bestScore) {
                 bestScore = score;
                 if (bestHull) bestHull.delete();
@@ -875,7 +843,7 @@ function detectBoardHomography() {
                 hull.delete();
             }
         }
-        if (!bestHull || bestScore >= 0.15) return null;
+        if (!bestHull || bestScore >= 0.35) return null;
 
         const approx = approxToHex(bestHull);
         if (!approx || approx.rows !== 6) {
