@@ -39,6 +39,8 @@ let dicePos = { x: 0, y: 0 };
 let diceDrag = null;
 let diceSettleTimer = null;
 let historyRangeDays = 'all';
+let boardTemplateContour = null;
+let boardTemplateReady = false;
 
 const el = {};
 const sampleCanvas = document.createElement('canvas');
@@ -49,6 +51,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initSvgGrid();
     initEventListeners();
     initDice();
+    initBoardTemplateWatcher();
     enforceUniqueColors();
     renderPlayers();
     renderHistory();
@@ -287,6 +290,62 @@ function shareApp() {
 function initDice() {
     if (!el.dice) return;
     setDiceValue(1);
+}
+
+function initBoardTemplateWatcher() {
+    const timer = setInterval(() => {
+        if (!window.cvReady || !window.cv) return;
+        if (!boardTemplateReady) initBoardTemplate();
+        if (boardTemplateReady) clearInterval(timer);
+    }, 250);
+}
+
+function initBoardTemplate() {
+    const img = document.getElementById('board-template');
+    if (!img || boardTemplateReady) return;
+    if (!img.complete || !img.naturalWidth) return;
+    let src = null;
+    let gray = null;
+    let blur = null;
+    let edges = null;
+    let contours = null;
+    let hierarchy = null;
+    let bestContour = null;
+    let bestArea = 0;
+    try {
+        src = cv.imread(img);
+        gray = new cv.Mat();
+        blur = new cv.Mat();
+        edges = new cv.Mat();
+        contours = new cv.MatVector();
+        hierarchy = new cv.Mat();
+        cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+        cv.GaussianBlur(gray, blur, new cv.Size(5, 5), 0);
+        cv.Canny(blur, edges, 60, 120);
+        cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+        for (let i = 0; i < contours.size(); i += 1) {
+            const cnt = contours.get(i);
+            const area = cv.contourArea(cnt);
+            if (area > bestArea) {
+                bestArea = area;
+                bestContour = cnt;
+            }
+        }
+        if (!bestContour || bestArea < 1000) return;
+        const hull = new cv.Mat();
+        cv.convexHull(bestContour, hull, false, true);
+        boardTemplateContour = hull;
+        boardTemplateReady = true;
+    } catch (err) {
+        console.warn('Template init failed', err);
+    } finally {
+        if (src) src.delete();
+        if (gray) gray.delete();
+        if (blur) blur.delete();
+        if (edges) edges.delete();
+        if (contours) contours.delete();
+        if (hierarchy) hierarchy.delete();
+    }
 }
 
 function setDiceValue(value) {
@@ -561,31 +620,63 @@ function scanWithContourAlignment(counts) {
         cv.Canny(blur, edges, 60, 120);
         cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
-        let bestContour = null;
-        let bestArea = 0;
-        for (let i = 0; i < contours.size(); i += 1) {
-            const cnt = contours.get(i);
-            const area = cv.contourArea(cnt);
-            if (area > bestArea) {
-                bestArea = area;
-                bestContour = cnt;
-            }
+    let bestContour = null;
+    let bestArea = 0;
+    let bestScore = Number.POSITIVE_INFINITY;
+    for (let i = 0; i < contours.size(); i += 1) {
+        const cnt = contours.get(i);
+        const area = cv.contourArea(cnt);
+        if (area < 2000) continue;
+        const hull = new cv.Mat();
+        cv.convexHull(cnt, hull, false, true);
+        if (!cv.isContourConvex(hull)) {
+            hull.delete();
+            continue;
         }
-        if (!bestContour || bestArea < 1000) return false;
+        const approxHull = approxToHex(hull);
+        const polyCount = approxHull ? approxHull.rows : 0;
+        if (polyCount < 5 || polyCount > 8) {
+            if (approxHull) approxHull.delete();
+            hull.delete();
+            continue;
+        }
+        const centerScore = cv.pointPolygonTest(hull, new cv.Point(view.rect.width * 0.5, view.rect.height * 0.5), false);
+        if (centerScore < 0) {
+            if (approxHull) approxHull.delete();
+            hull.delete();
+            continue;
+        }
+        let shapeScore = 0;
+        if (boardTemplateReady && boardTemplateContour) {
+            shapeScore = cv.matchShapes(hull, boardTemplateContour, cv.CONTOURS_MATCH_I1, 0);
+        } else {
+            shapeScore = Math.abs(polyCount - 6);
+        }
+        const score = shapeScore + (1 / Math.max(area, 1)) * 100000;
+        if (score < bestScore) {
+            bestScore = score;
+            bestArea = area;
+            if (bestContour) bestContour.delete();
+            bestContour = hull;
+        } else {
+            hull.delete();
+        }
+        if (approxHull) approxHull.delete();
+    }
+    if (!bestContour || bestArea < 2000) return false;
 
-        const peri = cv.arcLength(bestContour, true);
-        approx = new cv.Mat();
-        cv.approxPolyDP(bestContour, approx, 0.02 * peri, true);
+    const peri = cv.arcLength(bestContour, true);
+    approx = new cv.Mat();
+    cv.approxPolyDP(bestContour, approx, 0.02 * peri, true);
 
-        if (approx.rows !== 6) {
-            hull = new cv.Mat();
-            cv.convexHull(bestContour, hull, false, true);
-            const hullPeri = cv.arcLength(hull, true);
+    if (approx.rows !== 6) {
+        const refined = approxToHex(bestContour);
+        if (refined) {
             approx.delete();
-            approx = new cv.Mat();
-            cv.approxPolyDP(hull, approx, 0.02 * hullPeri, true);
+            approx = refined;
         }
-        if (approx.rows !== 6) return false;
+    }
+    if (approx.rows !== 6) return false;
 
         const srcPoints = extractContourPoints(approx);
         const orderedSrc = orderPointsClockwise(srcPoints);
@@ -666,6 +757,24 @@ function getHexDestinationPoints() {
         { x: cx - 121.24, y: cy + 70 },
         { x: cx - 121.24, y: cy - 70 }
     ];
+}
+
+function approxToHex(contour) {
+    const peri = cv.arcLength(contour, true);
+    const epsilons = [0.015, 0.02, 0.03, 0.04];
+    let best = null;
+    for (let i = 0; i < epsilons.length; i += 1) {
+        const approx = new cv.Mat();
+        cv.approxPolyDP(contour, approx, epsilons[i] * peri, true);
+        if (approx.rows === 6) return approx;
+        if (!best || Math.abs(approx.rows - 6) < Math.abs(best.rows - 6)) {
+            if (best) best.delete();
+            best = approx;
+        } else {
+            approx.delete();
+        }
+    }
+    return best;
 }
 
 function flattenPoints(points) {
