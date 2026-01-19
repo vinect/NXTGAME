@@ -216,6 +216,11 @@ button, .lobby-card, .scan-btn, .icon-btn, .primary-btn {
     transition: transform 0.1s;
 }
 .primary-btn:active { transform: scale(0.98); }
+.primary-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    box-shadow: none;
+}
 
 .secondary-btn {
     background: rgba(0, 155, 158, 0.08); border: 1px solid rgba(0, 155, 158, 0.5);
@@ -583,6 +588,16 @@ h2#winner-msg { margin: 0 0 20px 0; color: var(--nxt-teal); text-align: center; 
     flex-direction: column;
     gap: 10px;
 }
+.consent-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    font-size: 0.9rem;
+    color: var(--text-main);
+}
+.consent-row input {
+    margin-top: 3px;
+}
 .field-label {
     font-weight: 700;
     color: var(--text-main);
@@ -609,6 +624,12 @@ h2#winner-msg { margin: 0 0 20px 0; color: var(--nxt-teal); text-align: center; 
     font-size: 0.85rem;
     color: var(--text-muted);
     margin: 0;
+}
+.privacy-hint {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin: 0;
+    line-height: 1.4;
 }
 
 /* Install Modal */

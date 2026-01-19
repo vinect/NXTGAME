@@ -217,7 +217,12 @@
                 <p>Hinterlasse deine E-Mail, wenn du Infos zum Studium an der NXT Reutlingen möchtest.</p>
                 <label class="field-label" for="interest-email">E-Mail</label>
                 <input id="interest-email" class="text-input" type="email" inputmode="email" placeholder="name@beispiel.de" autocomplete="email">
-                <button class="primary-btn inline-btn" type="button">Interesse senden</button>
+                <label class="consent-row">
+                    <input id="interest-consent" type="checkbox">
+                    <span>Ich willige ein, dass die Fakult&auml;t NXT der Hochschule Reutlingen meine E-Mail zum Zweck der Studieninfo verarbeitet.</span>
+                </label>
+                <button id="interest-submit" class="primary-btn inline-btn" type="button" disabled>Interesse senden</button>
+                <p class="privacy-hint">Datenschutzhinweis: Verantwortlich ist die Fakult&auml;t NXT der Hochschule Reutlingen. Weitere Infos zur Datenverarbeitung: <a class="link-btn" href="#" target="_blank" rel="noopener">Datenschutzerkl&auml;rung</a>.</p>
                 <p class="field-hint">Keine Weitergabe an Dritte. Nur für Studieninfos.</p>
             </div>
         </div>

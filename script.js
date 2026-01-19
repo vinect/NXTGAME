@@ -72,6 +72,8 @@ function initElements() {
     el.installModal = document.getElementById('install-modal');
     el.dice = document.getElementById('dice');
     el.rollDiceBtn = document.getElementById('roll-dice-btn');
+    el.interestConsent = document.getElementById('interest-consent');
+    el.interestSubmit = document.getElementById('interest-submit');
 }
 
 function initSvgGrid() {
@@ -140,6 +142,8 @@ function initEventListeners() {
     document.getElementById('install-dismiss-btn')?.addEventListener('click', () => el.installModal?.classList.add('hidden'));
     document.getElementById('close-install')?.addEventListener('click', () => el.installModal?.classList.add('hidden'));
     document.getElementById('roll-dice-btn')?.addEventListener('click', rollDice);
+    el.interestConsent?.addEventListener('change', updateInterestSubmitState);
+    updateInterestSubmitState();
 }
 
 function toggleMenu() { el.sideMenu?.classList.toggle('open'); el.menuOverlay?.classList.toggle('open'); }
@@ -224,6 +228,11 @@ function pickRandomStarter() {
     const r = players[Math.floor(Math.random() * players.length)];
     el.randomResult.textContent = `${r.name} startet!`;
     el.randomResult.classList.remove('hidden');
+}
+
+function updateInterestSubmitState() {
+    if (!el.interestSubmit || !el.interestConsent) return;
+    el.interestSubmit.disabled = !el.interestConsent.checked;
 }
 
 function initDice() {
