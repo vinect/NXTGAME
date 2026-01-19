@@ -62,6 +62,10 @@ let alignmentLoopId = null;
 let lastAlignmentSample = 0;
 let scanInProgress = false;
 let hexMaskCache = null;
+let alignmentStableCount = 0;
+let alignmentLostCount = 0;
+let alignmentLocked = false;
+let lastOverlayUpdate = 0;
 
 const el = {};
 const sampleCanvas = document.createElement('canvas');
@@ -504,19 +508,17 @@ function triggerScan() {
     el.instructionText.textContent = 'Analysiere...';
 
     try {
-        const counts = Object.keys(COLORS).reduce((acc, key) => ({ ...acc, [key]: 0 }), {});
+        const counts = createEmptyCounts();
         let usedAlignment = false;
-        let usedBlobCounts = false;
         if (cvReady) {
             alignmentActive = detectAndWarpHex();
             updateScanReadyState();
             if (alignmentActive) {
-                usedAlignment = scanWithAlignedSample(counts);
+                const alignedCounts = createEmptyCounts();
+                usedAlignment = scanWithAlignedSample(alignedCounts);
                 const blobCounts = detectBlobCountsFromAligned();
-                if (blobCounts) {
-                    applyBlobCounts(blobCounts, counts);
-                    usedBlobCounts = true;
-                }
+                const finalCounts = chooseBestCounts(alignedCounts, blobCounts);
+                applyBlobCounts(finalCounts, counts);
             }
         }
         if (!usedAlignment) {
@@ -630,12 +632,32 @@ function detectBlobCountsFromAligned() {
             const [h2, s2, v2] = COLORS[key].hsvHigh;
 
             try {
-                cv.inRange(
-                    hsv,
-                    new cv.Scalar(h1, s1, v1, 0),
-                    new cv.Scalar(h2, s2, v2, 255),
-                    colorMask
-                );
+                if (h1 <= h2) {
+                    cv.inRange(
+                        hsv,
+                        new cv.Scalar(h1, s1, v1, 0),
+                        new cv.Scalar(h2, s2, v2, 255),
+                        colorMask
+                    );
+                } else {
+                    const maskA = new cv.Mat();
+                    const maskB = new cv.Mat();
+                    cv.inRange(
+                        hsv,
+                        new cv.Scalar(0, s1, v1, 0),
+                        new cv.Scalar(h2, s2, v2, 255),
+                        maskA
+                    );
+                    cv.inRange(
+                        hsv,
+                        new cv.Scalar(h1, s1, v1, 0),
+                        new cv.Scalar(179, s2, v2, 255),
+                        maskB
+                    );
+                    cv.bitwise_or(maskA, maskB, colorMask);
+                    maskA.delete();
+                    maskB.delete();
+                }
                 cv.bitwise_and(colorMask, maskHex, masked);
                 cv.morphologyEx(masked, masked, cv.MORPH_OPEN, kernel);
                 cv.morphologyEx(masked, masked, cv.MORPH_CLOSE, kernel);
@@ -682,6 +704,26 @@ function applyBlobCounts(blobCounts, counts) {
             counts[key] = blobCounts[key];
         }
     });
+}
+
+function createEmptyCounts() {
+    return Object.keys(COLORS).reduce((acc, key) => ({ ...acc, [key]: 0 }), {});
+}
+
+function chooseBestCounts(alignedCounts, blobCounts) {
+    if (!blobCounts) return alignedCounts;
+    const alignedTotal = sumCounts(alignedCounts);
+    const blobTotal = sumCounts(blobCounts);
+    if (blobTotal === 0) return alignedCounts;
+    if (alignedTotal === 0) return blobCounts;
+    if (blobTotal < alignedTotal * 0.6 || blobTotal > alignedTotal * 1.6) {
+        return alignedCounts;
+    }
+    return blobCounts;
+}
+
+function sumCounts(counts) {
+    return Object.keys(COLORS).reduce((sum, key) => sum + (counts[key] || 0), 0);
 }
 
 function averageCircleColor(data, width, height, cx, cy, radius, gains) {
@@ -901,7 +943,8 @@ function runAlignmentLoop(timestamp) {
     if (now - lastAlignmentSample < ALIGN_SAMPLE_INTERVAL) return;
     lastAlignmentSample = now;
     alignmentActive = detectAndWarpHex();
-    updateAlignmentOverlay();
+    updateAlignmentState();
+    updateAlignmentOverlay(now);
     updateScanReadyState();
 }
 
@@ -913,10 +956,27 @@ function updateScanReadyState() {
         setScanReady(true, 'Ausrichten und SCAN');
         return;
     }
-    if (alignmentActive) {
+    if (alignmentLocked) {
         setScanReady(true, 'Ausrichten und SCAN');
     } else {
         setScanReady(false, 'Board ausrichten...');
+    }
+}
+
+function updateAlignmentState() {
+    if (alignmentActive) {
+        alignmentStableCount += 1;
+        alignmentLostCount = 0;
+    } else {
+        alignmentLostCount += 1;
+        alignmentStableCount = 0;
+    }
+
+    if (!alignmentLocked && alignmentStableCount >= 3) {
+        alignmentLocked = true;
+    }
+    if (alignmentLocked && alignmentLostCount >= 2) {
+        alignmentLocked = false;
     }
 }
 
@@ -1002,16 +1062,20 @@ function clipHexPath(ctx, width, height) {
     ctx.clip();
 }
 
-function updateAlignmentOverlay() {
+function updateAlignmentOverlay(timestamp) {
     if (!el.overlayCanvas || !alignmentLayout) return;
     const ctx = el.overlayCanvas.getContext('2d');
     if (!ctx) return;
     const { rect } = alignmentLayout;
     ctx.clearRect(0, 0, rect.width, rect.height);
-    if (!alignmentActive) {
+    if (!alignmentLocked) {
         el.overlayCanvas.classList.remove('locked');
         return;
     }
+    if (timestamp && timestamp - lastOverlayUpdate < 220) {
+        return;
+    }
+    lastOverlayUpdate = timestamp || performance.now();
 
     ctx.save();
     clipHexPath(ctx, rect.width, rect.height);
