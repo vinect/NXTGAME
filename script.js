@@ -660,11 +660,52 @@ function clampChannel(value) {
 }
 
 function computeWhiteBalanceGains(data) {
+    const stride = 16;
+    let lumaSum = 0;
+    let lumaCount = 0;
+    for (let i = 0; i < data.length; i += stride) {
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+        lumaSum += 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        lumaCount += 1;
+    }
+    if (!lumaCount) return { r: 1, g: 1, b: 1 };
+
+    const meanLuma = lumaSum / lumaCount;
+    const lumaThreshold = meanLuma + (255 - meanLuma) * 0.25;
+    const satThreshold = 40;
+
     let sumR = 0;
     let sumG = 0;
     let sumB = 0;
     let count = 0;
-    const stride = 16;
+    for (let i = 0; i < data.length; i += stride) {
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+        const max = Math.max(r, g, b);
+        const min = Math.min(r, g, b);
+        const luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        const saturation = max - min;
+        if (luma >= lumaThreshold && saturation <= satThreshold) {
+            sumR += r;
+            sumG += g;
+            sumB += b;
+            count += 1;
+        }
+    }
+    if (count < 25) {
+        return computeGrayWorldGains(data, stride);
+    }
+    return computeGrayWorldGainsFromSums(sumR, sumG, sumB, count);
+}
+
+function computeGrayWorldGains(data, stride) {
+    let sumR = 0;
+    let sumG = 0;
+    let sumB = 0;
+    let count = 0;
     for (let i = 0; i < data.length; i += stride) {
         sumR += data[i];
         sumG += data[i + 1];
@@ -672,6 +713,10 @@ function computeWhiteBalanceGains(data) {
         count += 1;
     }
     if (!count) return { r: 1, g: 1, b: 1 };
+    return computeGrayWorldGainsFromSums(sumR, sumG, sumB, count);
+}
+
+function computeGrayWorldGainsFromSums(sumR, sumG, sumB, count) {
     const avgR = sumR / count;
     const avgG = sumG / count;
     const avgB = sumB / count;
