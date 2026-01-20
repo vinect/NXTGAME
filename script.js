@@ -1182,7 +1182,7 @@ function detectAndWarpHex() {
 
         let bestApprox = null;
         let maxArea = 0;
-        const minArea = (cvInputCanvas.width * cvInputCanvas.height) * 0.15;
+        const minArea = (cvInputCanvas.width * cvInputCanvas.height) * 0.12;
 
         for (let i = 0; i < contours.size(); ++i) {
             let contour = contours.get(i);
@@ -1221,6 +1221,34 @@ function detectAndWarpHex() {
                 } else {
                     approx.delete();
                 }
+            }
+        }
+
+        if (!bestApprox) {
+            let thresh = new cv.Mat();
+            let threshInv = new cv.Mat();
+            let closed = new cv.Mat();
+            let closedInv = new cv.Mat();
+            let kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(5, 5));
+            try {
+                cv.adaptiveThreshold(blurred, thresh, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 21, 4);
+                cv.bitwise_not(thresh, threshInv);
+                cv.morphologyEx(thresh, closed, cv.MORPH_CLOSE, kernel);
+                cv.morphologyEx(threshInv, closedInv, cv.MORPH_CLOSE, kernel);
+
+                const bestA = findBestHexFromBinary(closed, minArea);
+                const bestB = findBestHexFromBinary(closedInv, minArea);
+                if (bestA.bestArea >= bestB.bestArea) {
+                    bestApprox = bestA.bestApprox;
+                } else {
+                    bestApprox = bestB.bestApprox;
+                }
+            } finally {
+                thresh.delete();
+                threshInv.delete();
+                closed.delete();
+                closedInv.delete();
+                kernel.delete();
             }
         }
 
