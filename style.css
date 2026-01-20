@@ -495,14 +495,9 @@ h2#winner-msg {
     font-size: 0.95rem;
     color: var(--text-muted);
 }
-.guide-gallery {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-    gap: 12px;
-    margin: 14px 0 18px;
-}
 .guide-figure {
-    margin: 0;
+    margin: 14px 0 18px;
+    position: relative;
 }
 .guide-figure img {
     width: 100%;
@@ -511,6 +506,29 @@ h2#winner-msg {
     border-radius: 14px;
     border: 1px solid rgba(0, 155, 158, 0.2);
     box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+}
+.guide-badge {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    color: #fff;
+    box-shadow: 0 6px 14px rgba(0, 0, 0, 0.2);
+    border: 2px solid rgba(255, 255, 255, 0.9);
+}
+.guide-badge svg {
+    width: 18px;
+    height: 18px;
+}
+.guide-badge-ok {
+    background: #1fb36b;
+}
+.guide-badge-bad {
+    background: #e04b3f;
 }
 .guide-list {
     margin: 0;

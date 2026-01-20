@@ -26,8 +26,8 @@ const HISTORY_CLEAR_KEY = 'nxt_games_cleared_v22';
 const VIEWBOX_SIZE = 300;
 const VIEWBOX_HALF = VIEWBOX_SIZE / 2;
 const SAMPLE_RADIUS_MM = 5; // ~1cm Durchmesser
-const SAT_MIN = 35;
-const VAL_MIN = 35;
+const SAT_MIN = 45;
+const VAL_MIN = 45;
 const TRIANGLE_CENTERS = buildTriangleCenters(PIN_GRID);
 const HEX_POINTS = [
     [0.5, 0.033333],
@@ -660,57 +660,11 @@ function clampChannel(value) {
 }
 
 function computeWhiteBalanceGains(data) {
+    let sumR = 0;
+    let sumG = 0;
+    let sumB = 0;
+    let count = 0;
     const stride = 16;
-    let lumaSum = 0;
-    let lumaSumSq = 0;
-    let lumaCount = 0;
-    for (let i = 0; i < data.length; i += stride) {
-        const r = data[i];
-        const g = data[i + 1];
-        const b = data[i + 2];
-        const luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-        lumaSum += luma;
-        lumaSumSq += luma * luma;
-        lumaCount += 1;
-    }
-    if (!lumaCount) return { r: 1, g: 1, b: 1 };
-
-    const meanLuma = lumaSum / lumaCount;
-    const variance = Math.max(0, lumaSumSq / lumaCount - meanLuma * meanLuma);
-    const stdLuma = Math.sqrt(variance);
-    const lumaThreshold = meanLuma + stdLuma * 0.6;
-    const satThreshold = 55;
-
-    let sumR = 0;
-    let sumG = 0;
-    let sumB = 0;
-    let count = 0;
-    for (let i = 0; i < data.length; i += stride) {
-        const r = data[i];
-        const g = data[i + 1];
-        const b = data[i + 2];
-        const max = Math.max(r, g, b);
-        const min = Math.min(r, g, b);
-        const luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-        const saturation = max - min;
-        if (luma >= lumaThreshold && saturation <= satThreshold) {
-            sumR += r;
-            sumG += g;
-            sumB += b;
-            count += 1;
-        }
-    }
-    if (count < 40) {
-        return computeGrayWorldGains(data, stride);
-    }
-    return computeGrayWorldGainsFromSums(sumR, sumG, sumB, count);
-}
-
-function computeGrayWorldGains(data, stride) {
-    let sumR = 0;
-    let sumG = 0;
-    let sumB = 0;
-    let count = 0;
     for (let i = 0; i < data.length; i += stride) {
         sumR += data[i];
         sumG += data[i + 1];
@@ -718,15 +672,11 @@ function computeGrayWorldGains(data, stride) {
         count += 1;
     }
     if (!count) return { r: 1, g: 1, b: 1 };
-    return computeGrayWorldGainsFromSums(sumR, sumG, sumB, count);
-}
-
-function computeGrayWorldGainsFromSums(sumR, sumG, sumB, count) {
     const avgR = sumR / count;
     const avgG = sumG / count;
     const avgB = sumB / count;
     const gray = (avgR + avgG + avgB) / 3;
-    const clampGain = (value) => Math.min(1.25, Math.max(0.75, value));
+    const clampGain = (value) => Math.min(1.4, Math.max(0.6, value));
     return {
         r: clampGain(gray / (avgR || 1)),
         g: clampGain(gray / (avgG || 1)),
@@ -1182,7 +1132,7 @@ function detectAndWarpHex() {
 
         let bestApprox = null;
         let maxArea = 0;
-        const minArea = (cvInputCanvas.width * cvInputCanvas.height) * 0.12;
+        const minArea = (cvInputCanvas.width * cvInputCanvas.height) * 0.15;
 
         for (let i = 0; i < contours.size(); ++i) {
             let contour = contours.get(i);
