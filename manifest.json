@@ -1,6 +1,6 @@
 {
-  "name": "NXT Game Scanner",
-  "short_name": "NXT Scanner",
+  "name": "NXT-Grid Scanner",
+  "short_name": "NXT-Grid",
   "description": "PWA zur automatisierten Punktezählung des hexagonalen NXT-Bretts",
   "version": "21.0.0",
   "start_url": "./index.html",
@@ -32,7 +32,7 @@
     {
       "name": "Neues Spiel",
       "short_name": "Spielen",
-      "description": "Starte direkt ein neues NXT Game",
+      "description": "Starte direkt ein neues NXT-Grid",
       "url": "./index.html#game",
       "icons": [
         {

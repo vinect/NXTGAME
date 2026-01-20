@@ -1,5 +1,5 @@
 ﻿/**
- * NXT Game Scanner v22.2
+ * NXT-Grid Scanner v22.2
  * Manual scan: average color in triangle centers
  */
 
@@ -323,8 +323,8 @@ function updateInterestSubmitState() {
 function shareApp() {
     if (navigator.share) {
         navigator.share({
-            title: 'NXT Game',
-            text: 'NXT Game App',
+            title: 'NXT-Grid',
+            text: 'NXT-Grid App',
             url: window.location.href
         }).catch(() => {});
         return;
@@ -1079,111 +1079,133 @@ function findBestHexFromBinary(binaryMat, minArea) {
     return { bestApprox, bestArea };
 }
 
+function getDynamicThresholds(mat) {
+    const mean = cv.mean(mat);
+    const v = mean[0];
+    const sigma = 0.33;
+    const lower = Math.max(0, (1.0 - sigma) * v);
+    const upper = Math.min(255, (1.0 + sigma) * v);
+    return { lower, upper };
+}
+
 function detectAndWarpHex() {
     if (!cvReady || !alignmentLayout || !el.video || !el.video.videoWidth) {
         return false;
     }
 
     drawVideoCover(cvInputCtx, el.video, cvInputCanvas.width, cvInputCanvas.height);
-
-    const src = cv.imread(cvInputCanvas);
-    const gray = new cv.Mat();
-    const grayEq = new cv.Mat();
-    const blurred = new cv.Mat();
-    const edges = new cv.Mat();
-    const thresh = new cv.Mat();
-    const morphed = new cv.Mat();
-    const kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(3, 3));
-    let bestApprox = null;
+    
+    let src = cv.imread(cvInputCanvas);
+    let gray = new cv.Mat();
+    let blurred = new cv.Mat();
+    let edges = new cv.Mat();
+    let contours = new cv.MatVector();
+    let hierarchy = new cv.Mat();
+    let hull = new cv.Mat();
+    
     let aligned = false;
 
     try {
         cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-        cv.equalizeHist(gray, grayEq);
-        cv.GaussianBlur(
-            grayEq,
-            blurred,
-            new cv.Size(DETECTION.blurSize, DETECTION.blurSize),
-            0
-        );
-        cv.Canny(blurred, edges, DETECTION.cannyLow, DETECTION.cannyHigh);
-        const minArea = cvInputCanvas.width * cvInputCanvas.height * DETECTION.minAreaRatio;
-        const edgeResult = findBestHexFromBinary(edges, minArea);
-        bestApprox = edgeResult.bestApprox;
 
-        if (!bestApprox) {
-            cv.adaptiveThreshold(
-                grayEq,
-                thresh,
-                255,
-                cv.ADAPTIVE_THRESH_GAUSSIAN_C,
-                cv.THRESH_BINARY,
-                21,
-                7
-            );
-            cv.morphologyEx(thresh, morphed, cv.MORPH_CLOSE, kernel);
-            const threshResult = findBestHexFromBinary(morphed, minArea);
-            bestApprox = threshResult.bestApprox;
-        }
+        // Use Bilateral Filter to keep edges sharp but remove wood grain noise
+        cv.bilateralFilter(gray, blurred, 9, 75, 75, cv.BORDER_DEFAULT);
 
-        if (!bestApprox) {
-            return false;
-        }
+        // Dynamic Canny Thresholds
+        const thresh = getDynamicThresholds(blurred);
+        cv.Canny(blurred, edges, thresh.lower, thresh.upper);
 
-        const ordered = orderHexPoints(bestApprox);
-        const destPoints = HEX_POINTS.map(([x, y]) => ({
-            x: x * sampleCanvas.width,
-            y: y * sampleCanvas.height,
-        }));
+        // Circular ROI Masking to ignore background clutter
+        let mask = new cv.Mat.zeros(edges.rows, edges.cols, cv.CV_8UC1);
+        let center = new cv.Point(edges.cols / 2, edges.rows / 2);
+        let radius = Math.min(edges.cols, edges.rows) * 0.48; 
+        cv.circle(mask, center, radius, new cv.Scalar(255), -1);
+        cv.bitwise_and(edges, edges, edges, mask);
+        mask.delete();
 
-        const srcMat = cv.matFromArray(
-            ordered.length,
-            1,
-            cv.CV_32FC2,
-            ordered.flatMap((point) => [point.x, point.y])
-        );
-        const dstMat = cv.matFromArray(
-            destPoints.length,
-            1,
-            cv.CV_32FC2,
-            destPoints.flatMap((point) => [point.x, point.y])
-        );
-        const homography = cv.findHomography(srcMat, dstMat);
-        const warped = new cv.Mat();
+        cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
-        try {
-            if (homography.empty()) {
-                return false;
+        let bestApprox = null;
+        let maxArea = 0;
+        const minArea = (cvInputCanvas.width * cvInputCanvas.height) * 0.15;
+
+        for (let i = 0; i < contours.size(); ++i) {
+            let contour = contours.get(i);
+            let area = cv.contourArea(contour);
+
+            if (area > maxArea && area > minArea) {
+                let peri = cv.arcLength(contour, true);
+                let approx = new cv.Mat();
+                
+                cv.approxPolyDP(contour, approx, 0.03 * peri, true);
+
+                // Allow 5-9 corners and fix with Convex Hull
+                if (approx.rows >= 5 && approx.rows <= 9 && cv.isContourConvex(approx)) {
+                    let rect = cv.boundingRect(approx);
+                    let ratio = rect.width / rect.height;
+                    
+                    if (ratio > 0.85 && ratio < 1.15) {
+                        if (approx.rows !== 6) {
+                            let tmpHull = new cv.Mat();
+                            cv.convexHull(approx, tmpHull, false, true);
+                            let hullPeri = cv.arcLength(tmpHull, true);
+                            cv.approxPolyDP(tmpHull, approx, 0.04 * hullPeri, true);
+                            tmpHull.delete();
+                        }
+
+                        if (approx.rows === 6) {
+                            if (bestApprox) bestApprox.delete();
+                            bestApprox = approx;
+                            maxArea = area;
+                        } else {
+                            approx.delete();
+                        }
+                    } else {
+                        approx.delete();
+                    }
+                } else {
+                    approx.delete();
+                }
             }
-            cv.warpPerspective(
-                src,
-                warped,
-                homography,
-                new cv.Size(sampleCanvas.width, sampleCanvas.height),
-                cv.INTER_LINEAR,
-                cv.BORDER_CONSTANT,
-                new cv.Scalar(0, 0, 0, 255)
-            );
-            cv.imshow(sampleCanvas, warped);
-            aligned = true;
-        } finally {
-            srcMat.delete();
-            dstMat.delete();
-            homography.delete();
-            warped.delete();
         }
-    } finally {
-        src.delete();
-        gray.delete();
-        grayEq.delete();
-        blurred.delete();
-        edges.delete();
-        thresh.delete();
-        morphed.delete();
-        kernel.delete();
+
         if (bestApprox) {
-            bestApprox.delete();
+            const ordered = orderHexPoints(bestApprox);
+            const destPoints = HEX_POINTS.map(([x, y]) => ({
+                x: x * sampleCanvas.width,
+                y: y * sampleCanvas.height,
+            }));
+
+            const srcMat = cv.matFromArray(
+                ordered.length, 1, cv.CV_32FC2,
+                ordered.flatMap((point) => [point.x, point.y])
+            );
+            const dstMat = cv.matFromArray(
+                destPoints.length, 1, cv.CV_32FC2,
+                destPoints.flatMap((point) => [point.x, point.y])
+            );
+            
+            const homography = cv.findHomography(srcMat, dstMat);
+            const warped = new cv.Mat();
+
+            if (!homography.empty()) {
+                cv.warpPerspective(
+                    src, warped, homography,
+                    new cv.Size(sampleCanvas.width, sampleCanvas.height),
+                    cv.INTER_LINEAR, cv.BORDER_CONSTANT, new cv.Scalar(0, 0, 0, 255)
+                );
+                cv.imshow(sampleCanvas, warped);
+                aligned = true;
+            }
+            
+            srcMat.delete(); dstMat.delete(); homography.delete(); warped.delete(); bestApprox.delete();
         }
+
+    } catch (err) {
+        console.error("CV Error:", err);
+    } finally {
+        src.delete(); gray.delete(); blurred.delete(); 
+        edges.delete(); contours.delete(); hierarchy.delete(); hull.delete();
     }
 
     return aligned;

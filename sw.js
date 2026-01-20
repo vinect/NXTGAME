@@ -1,4 +1,4 @@
-const CACHE_NAME = 'nxt-game-v22';
+const CACHE_NAME = 'nxt-grid-v22';
 const STATIC_ASSETS = [
   './',
   './index.html',
